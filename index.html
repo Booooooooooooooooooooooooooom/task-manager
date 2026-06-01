@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSC日常工作Task看板</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- 飞书 JS SDK -->
+    <script src="https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.28.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- 状态栏 -->
+        <div class="status-bar">
+            <div id="loginStatus" class="login-status">
+                <span>正在连接飞书...</span>
+            </div>
+            <div id="serverStatus" class="server-status">
+                <span>检查服务器...</span>
+            </div>
+        </div>
+
+        <!-- 头部标题 -->
+        <header class="header">
+            <div class="header-content">
+                <h1>SSC日常工作Task看板</h1>
+                <p class="subtitle">Shared Services Center Task Dashboard</p>
+                <p class="user-info" id="userInfo"></p>
+            </div>
+        </header>
+
+        <!-- 大气标签页导航 -->
+        <nav class="tab-navigation">
+            <div class="tab-item active" data-tab="overview" onclick="switchTab('overview')">
+                <div class="tab-icon">📊</div>
+                <div class="tab-text">
+                    <span class="tab-title">任务总览</span>
+                    <span class="tab-desc">Overview & Analytics</span>
+                </div>
+            </div>
+            <div class="tab-item" data-tab="calendar" onclick="switchTab('calendar')">
+                <div class="tab-icon">📅</div>
+                <div class="tab-text">
+                    <span class="tab-title">日历视图</span>
+                    <span class="tab-desc">Calendar View</span>
+                </div>
+            </div>
+            <div class="tab-item" data-tab="datasource" onclick="switchTab('datasource')">
+                <div class="tab-icon">📝</div>
+                <div class="tab-text">
+                    <span class="tab-title">数据源</span>
+                    <span class="tab-desc">Data Source</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 第一部分：任务总览 -->
+        <section id="overview" class="tab-content active">
+            <div class="section-header">
+                <h2>任务总览</h2>
+                <span class="task-count">共 <strong id="overviewCount">0</strong> 个任务</span>
+            </div>
+
+            <!-- 筛选栏 -->
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>团队：</label>
+                    <select id="teamFilter" onchange="filterOverview()">
+                        <option value="">全部</option>
+                        <option value="AP">AP</option>
+                        <option value="AR">AR</option>
+                        <option value="GL">GL</option>
+                        <option value="SCMC">SCMC</option>
+                        <option value="Treasury">Treasury</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>月份：</label>
+                    <input type="month" id="overviewStartMonth" onchange="filterOverview()">
+                </div>
+                <div class="filter-group">
+                    <label>至：</label>
+                    <input type="month" id="overviewEndMonth" onchange="filterOverview()">
+                </div>
+                <button class="btn-reset" onclick="resetOverviewFilter()">重置筛选</button>
+            </div>
+
+            <!-- 统计卡片 -->
+            <div class="stats-cards">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalTasks">0</div>
+                    <div class="stat-label">总任务</div>
+                </div>
+                <div class="stat-card monthly">
+                    <div class="stat-number" id="monthlyTasks">0</div>
+                    <div class="stat-label">每月任务</div>
+                </div>
+                <div class="stat-card quarterly">
+                    <div class="stat-number" id="quarterlyTasks">0</div>
+                    <div class="stat-label">每季度任务</div>
+                </div>
+                <div class="stat-card yearly">
+                    <div class="stat-number" id="yearlyTasks">0</div>
+                    <div class="stat-label">每年任务</div>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="charts-container">
+                <div class="chart-box">
+                    <h3>各团队任务分布</h3>
+                    <canvas id="teamChart"></canvas>
+                </div>
+                <div class="chart-box">
+                    <h3>任务周期分布</h3>
+                    <canvas id="cycleChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 任务列表 -->
+            <div class="task-list-container">
+                <h3>任务明细</h3>
+                <table class="task-table">
+                    <thead>
+                        <tr>
+                            <th>事项(月份+事项)</th>
+                            <th>团队</th>
+                            <th>月份</th>
+                            <th>日期</th>
+                            <th>事项类型</th>
+                            <th>责任人</th>
+                            <th>接收人</th>
+                            <th>周期类型</th>
+                        </tr>
+                    </thead>
+                    <tbody id="overviewTaskList">
+                        <!-- 动态生成 -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 第二部分：日历视图 -->
+        <section id="calendar" class="tab-content">
+            <div class="section-header">
+                <h2>日历视图</h2>
+                <div class="calendar-legend">
+                    <span class="legend-item"><span class="dot ap"></span>AP</span>
+                    <span class="legend-item"><span class="dot ar"></span>AR</span>
+                    <span class="legend-item"><span class="dot gl"></span>GL</span>
+                    <span class="legend-item"><span class="dot scmc"></span>SCMC</span>
+                    <span class="legend-item"><span class="dot treasury"></span>Treasury</span>
+                </div>
+            </div>
+            <div class="calendar-container">
+                <div id="calendarView"></div>
+            </div>
+        </section>
+
+        <!-- 第三部分：数据源 -->
+        <section id="datasource" class="tab-content">
+            <div class="section-header">
+                <h2>数据源</h2>
+                <div class="datasource-actions">
+                    <span class="task-count">共 <strong id="datasourceCount">0</strong> 条记录</span>
+                    <button class="btn-add-row" onclick="addNewRow()">+ 新增任务</button>
+                    <button class="btn-load" onclick="loadFromFeishu()" id="loadBtn">📥 从飞书加载</button>
+                    <button class="btn-sync" onclick="syncToFeishu()" id="syncBtn">🔄 同步到飞书</button>
+                </div>
+            </div>
+
+            <!-- 多维表格风格总表 -->
+            <div class="bitable-container">
+                <table class="bitable" id="bitable">
+                    <thead>
+                        <tr>
+                            <th class="col-seq">#</th>
+                            <th class="col-title">事项(月份+事项)</th>
+                            <th class="col-team">团队</th>
+                            <th class="col-month">月份</th>
+                            <th class="col-date">日期</th>
+                            <th class="col-type">事项类型</th>
+                            <th class="col-assignee">责任人</th>
+                            <th class="col-receiver">接收人</th>
+                            <th class="col-cycle">周期类型</th>
+                            <th class="col-action">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bitableBody">
+                        <!-- 动态生成 -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
