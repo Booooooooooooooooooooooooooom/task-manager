@@ -1,21 +1,14 @@
 // ===== 飞书配置 =====
 const FEISHU_CONFIG = {
-    appId: 'cli_aa8c75fb89629bdd',
-    appSecret: 'ZPiTGdPm9h8O6fJGaqwHMh2KjaMBhUVp',
     appToken: 'BnZIbE8xiauxKYsjef5cOw70nFc',
     tableId: 'tblPwyRZonL7YmLs'
 };
-
-// ===== 飞书 API 基础地址 =====
-const BITABLE_API = 'https://open.feishu.cn/open-apis/bitable/v1/apps';
 
 // ===== 全局数据 =====
 let allTasks = [];
 let teamChartInstance = null;
 let statusChartInstance = null;
 let calendarInstance = null;
-let currentUser = null;
-let isFeishuReady = false;
 let isLoading = false;
 
 // ===== 常量定义 =====
@@ -25,163 +18,32 @@ const CYCLE_OPTIONS = ['每年', '每半年', '每季度', '每月', '每两周'
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 页面加载完成');
-    initFeishu();
+    initApp();
 });
-
-// ===== 飞书初始化（使用 Lark JS SDK）=====
-function initFeishu() {
-    updateStatus('正在连接飞书...', 'loading');
-
-    // 检查是否在飞书环境
-    var ua = navigator.userAgent.toLowerCase();
-    var isFeishu = ua.indexOf('feishu') > -1 || ua.indexOf('lark') > -1;
-    console.log('📱 UserAgent:', ua.substring(0, 100));
-    console.log('🔍 是否飞书环境:', isFeishu);
-
-    if (!isFeishu) {
-        console.log('⚠️ 未检测到飞书环境');
-        updateStatus('演示模式（请在飞书工作台中打开）', 'warning');
-        initApp();
-        return;
-    }
-
-    // 使用 @larksuite/js-sdk
-    if (typeof lark !== 'undefined') {
-        console.log('✅ 检测到 Lark JS SDK');
-        
-        lark.init({
-            appId: FEISHU_CONFIG.appId
-        }).then(function() {
-            console.log('✅ Lark SDK 初始化成功');
-            isFeishuReady = true;
-            updateStatus('已连接飞书', 'success');
-            initApp();
-        }).catch(function(err) {
-            console.error('❌ Lark SDK 初始化失败:', err);
-            updateStatus('飞书连接失败: ' + (err.message || '未知错误'), 'error');
-            initApp();
-        });
-    } else {
-        console.log('⚠️ Lark SDK 未加载，尝试备用方案...');
-        // 备用：尝试直接检测 tt
-        tryTTSDK();
-    }
-}
-
-// 备用：尝试 tt SDK
-function tryTTSDK() {
-    var retryCount = 0;
-    var maxRetries = 3;
-
-    function check() {
-        retryCount++;
-        console.log('🔍 第 ' + retryCount + ' 次尝试检测 tt SDK...');
-
-        if (typeof tt !== 'undefined') {
-            console.log('✅ 检测到 tt SDK');
-            tt.ready(function() {
-                isFeishuReady = true;
-                updateStatus('已连接飞书', 'success');
-                initApp();
-            });
-        } else if (retryCount < maxRetries) {
-            setTimeout(check, 1000);
-        } else {
-            console.log('⚠️ 所有 SDK 都未加载');
-            updateStatus('飞书 SDK 加载失败', 'error');
-            initApp();
-        }
-    }
-
-    check();
-}
-
-function updateStatus(message, type) {
-    const statusEl = document.getElementById('loginStatus');
-    if (statusEl) {
-        statusEl.textContent = message;
-        statusEl.className = 'login-status ' + type;
-    }
-    console.log('📊 状态:', message);
-}
-
-function updateUserInfo(name) {
-    const userInfoEl = document.getElementById('userInfo');
-    if (userInfoEl) userInfoEl.textContent = '当前用户: ' + name;
-}
-
-// ===== 飞书 API 调用封装 =====
-async function callFeishuAPI(method, path, body) {
-    return new Promise(function(resolve, reject) {
-        if (!isFeishuReady) {
-            reject(new Error('不在飞书环境'));
-            return;
-        }
-
-        const url = BITABLE_API + '/' + FEISHU_CONFIG.appToken + path;
-        console.log('📡 API 调用:', method, url);
-
-        const options = {
-            url: url,
-            method: method,
-            header: {
-                'Content-Type': 'application/json'
-            },
-            success: function(res) {
-                console.log('✅ API 成功:', res);
-                var data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-                if (data.code === 0) {
-                    resolve(data.data);
-                } else {
-                    reject(new Error(data.msg || 'API 错误: ' + data.code));
-                }
-            },
-            fail: function(err) {
-                console.error('❌ API 失败:', err);
-                reject(new Error(err.errMsg || '网络请求失败'));
-            }
-        };
-
-        if (body) {
-            options.data = JSON.stringify(body);
-        }
-
-        // 使用 tt.request 或 h5.request
-        if (typeof tt !== 'undefined') {
-            tt.request(options);
-        } else if (typeof window.h5 !== 'undefined') {
-            window.h5.request(options);
-        } else {
-            reject(new Error('无可用 SDK'));
-        }
-    });
-}
 
 // ===== 初始化应用 =====
 async function initApp() {
-    console.log('🔧 初始化应用...');
+    updateStatus('正在加载数据...', 'loading');
     showLoading('正在加载数据...');
 
     try {
-        if (isFeishuReady) {
-            await loadFromFeishu();
-        } else {
-            initDemoData();
-        }
-
+        // 直接从飞书公开分享加载数据
+        await loadFromFeishuPublic();
+        
         initOverview();
         initCalendar();
         updateAllViews();
 
         // 每 30 秒自动刷新
         setInterval(function() {
-            if (isFeishuReady && !isLoading) {
+            if (!isLoading) {
                 silentRefresh();
             }
         }, 30000);
 
     } catch (error) {
         console.error('❌ 初始化失败:', error);
+        updateStatus('加载失败，使用演示数据', 'error');
         initDemoData();
         updateAllViews();
     } finally {
@@ -196,74 +58,55 @@ async function initApp() {
     });
 }
 
-// ===== 显示/隐藏加载状态 =====
-function showLoading(message) {
-    isLoading = true;
-    let el = document.getElementById('globalLoading');
-    if (!el) {
-        el = document.createElement('div');
-        el.id = 'globalLoading';
-        el.className = 'global-loading';
-        el.innerHTML = '<div class="loading-spinner"></div><div class="loading-text">' + message + '</div>';
-        document.body.appendChild(el);
-    } else {
-        el.querySelector('.loading-text').textContent = message;
-        el.style.display = 'flex';
-    }
-}
-
-function hideLoading() {
-    isLoading = false;
-    var el = document.getElementById('globalLoading');
-    if (el) el.style.display = 'none';
-}
-
-// ===== 从飞书加载数据 =====
-async function loadFromFeishu() {
-    if (!isFeishuReady) {
-        showToast('请在飞书工作台中打开此应用', 'error');
-        return;
-    }
-
+// ===== 从飞书公开分享加载数据 =====
+async function loadFromFeishuPublic() {
     try {
-        showLoading('正在从飞书加载数据...');
-        console.log('📥 加载飞书数据...');
-
-        var data = await callFeishuAPI('GET', '/tables/' + FEISHU_CONFIG.tableId + '/records?page_size=500');
-
-        if (data && data.items) {
-            allTasks = data.items.map(recordToTask);
-            console.log('✅ 加载 ' + allTasks.length + ' 条记录');
-            updateAllViews();
-            showToast('已加载 ' + allTasks.length + ' 条任务', 'success');
-        } else {
-            allTasks = [];
-            updateAllViews();
-            showToast('多维表格暂无数据', 'info');
+        console.log('📥 从飞书公开分享加载数据...');
+        
+        // 使用飞书公开 API（通过分享链接访问）
+        // 注意：这需要开启"互联网上获得链接的人可阅读"
+        const url = `https://open.feishu.cn/open-apis/bitable/v1/apps/${FEISHU_CONFIG.appToken}/tables/${FEISHU_CONFIG.tableId}/records?page_size=500`;
+        
+        // 尝试使用 fetch 直接访问（可能会遇到 CORS 问题）
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.code === 0 && data.data && data.data.items) {
+                    allTasks = data.data.items.map(recordToTask);
+                    console.log(`✅ 成功加载 ${allTasks.length} 条记录`);
+                    updateStatus(`已加载 ${allTasks.length} 条任务`, 'success');
+                    updateAllViews();
+                    showToast(`已加载 ${allTasks.length} 条任务`, 'success');
+                    return;
+                }
+            }
+        } catch (corsError) {
+            console.log('⚠️ 直接访问遇到 CORS 限制，尝试其他方式...');
         }
-
-    } catch (error) {
-        console.error('❌ 加载失败:', error);
-        showToast('加载失败: ' + error.message, 'error');
+        
+        // 如果直接访问失败，使用演示数据并提示用户
+        console.log('⚠️ 无法直接访问飞书 API，使用演示数据');
+        updateStatus('无法访问飞书数据（CORS限制），使用演示数据', 'warning');
         initDemoData();
         updateAllViews();
-    } finally {
-        hideLoading();
+        
+    } catch (error) {
+        console.error('❌ 加载失败:', error);
+        throw error;
     }
 }
 
 // ===== 静默刷新 =====
 async function silentRefresh() {
     try {
-        var data = await callFeishuAPI('GET', '/tables/' + FEISHU_CONFIG.tableId + '/records?page_size=500');
-        if (data && data.items) {
-            var newTasks = data.items.map(recordToTask);
-            if (JSON.stringify(newTasks) !== JSON.stringify(allTasks)) {
-                allTasks = newTasks;
-                updateAllViews();
-                showToast('数据已更新', 'info');
-            }
-        }
+        await loadFromFeishuPublic();
     } catch (error) {
         console.error('静默刷新失败:', error);
     }
@@ -271,12 +114,16 @@ async function silentRefresh() {
 
 // ===== 手动刷新 =====
 async function manualRefresh() {
-    console.log('🔄 手动刷新, isFeishuReady:', isFeishuReady);
-    if (!isFeishuReady) {
-        showToast('请在飞书工作台中打开此应用', 'error');
-        return;
+    console.log('🔄 手动刷新');
+    showLoading('正在刷新数据...');
+    try {
+        await loadFromFeishuPublic();
+        showToast('数据已刷新', 'success');
+    } catch (error) {
+        showToast('刷新失败: ' + error.message, 'error');
+    } finally {
+        hideLoading();
     }
-    await loadFromFeishu();
 }
 
 // ===== 飞书记录 → 本地任务 =====
@@ -325,60 +172,36 @@ function getMonthFromDate(dateStr) {
     return dateStr ? dateStr.substring(0, 7) : '';
 }
 
-// ===== 创建任务 =====
-async function createTaskToFeishu(task) {
-    if (!isFeishuReady) return null;
-    try {
-        var record = taskToRecord(task);
-        var data = await callFeishuAPI('POST', '/tables/' + FEISHU_CONFIG.tableId + '/records', record);
-        if (data && data.record) {
-            return recordToTask(data.record);
-        }
-    } catch (error) {
-        console.error('❌ 创建失败:', error);
-        showToast('创建失败: ' + error.message, 'error');
+// ===== 状态更新 =====
+function updateStatus(message, type) {
+    var statusEl = document.getElementById('loginStatus');
+    if (statusEl) {
+        statusEl.textContent = message;
+        statusEl.className = 'login-status ' + type;
     }
-    return null;
+    console.log('📊 状态:', message);
 }
 
-// ===== 更新任务 =====
-async function updateTaskToFeishu(task) {
-    if (!isFeishuReady || !task.id) return false;
-    try {
-        var record = taskToRecord(task);
-        await callFeishuAPI('PUT', '/tables/' + FEISHU_CONFIG.tableId + '/records/' + task.id, record);
-        console.log('✅ 已更新:', task.title);
-        return true;
-    } catch (error) {
-        console.error('❌ 更新失败:', error);
-        showToast('更新失败: ' + error.message, 'error');
+// ===== 显示/隐藏加载状态 =====
+function showLoading(message) {
+    isLoading = true;
+    var el = document.getElementById('globalLoading');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'globalLoading';
+        el.className = 'global-loading';
+        el.innerHTML = '<div class="loading-spinner"></div><div class="loading-text">' + message + '</div>';
+        document.body.appendChild(el);
+    } else {
+        el.querySelector('.loading-text').textContent = message;
+        el.style.display = 'flex';
     }
-    return false;
 }
 
-// ===== 删除任务 =====
-async function deleteTaskFromFeishu(taskId) {
-    if (!isFeishuReady || !taskId) return false;
-    try {
-        await callFeishuAPI('DELETE', '/tables/' + FEISHU_CONFIG.tableId + '/records/' + taskId);
-        console.log('✅ 已删除:', taskId);
-        return true;
-    } catch (error) {
-        console.error('❌ 删除失败:', error);
-        showToast('删除失败: ' + error.message, 'error');
-    }
-    return false;
-}
-
-// ===== 演示数据 =====
-function initDemoData() {
-    allTasks = [
-        { id: 'demo1', title: '完成Q3财务报表', teams: ['GL', 'AP'], month: '2025-06', date: '2025-06-15', type: '财务报告', assignee: '张三', receiver: '李四', cycle: '每季度' },
-        { id: 'demo2', title: '供应商付款审核', teams: ['AP'], month: '2025-06', date: '2025-06-20', type: '付款审核', assignee: '王五', receiver: '赵六', cycle: '每月' },
-        { id: 'demo3', title: '客户对账', teams: ['AR'], month: '2025-06', date: '2025-06-25', type: '对账', assignee: '李四', receiver: '张三', cycle: '每月' },
-        { id: 'demo4', title: '库存盘点', teams: ['SCMC'], month: '2025-06', date: '2025-06-30', type: '盘点', assignee: '赵六', receiver: '王五', cycle: '每月' },
-        { id: 'demo5', title: '资金计划编制', teams: ['Treasury'], month: '2025-06', date: '2025-06-10', type: '资金计划', assignee: '张三', receiver: '李四', cycle: '每月' }
-    ];
+function hideLoading() {
+    isLoading = false;
+    var el = document.getElementById('globalLoading');
+    if (el) el.style.display = 'none';
 }
 
 // ===== Toast =====
@@ -393,6 +216,17 @@ function showToast(message, type) {
         toast.classList.remove('show');
         setTimeout(function() { toast.remove(); }, 300);
     }, 3000);
+}
+
+// ===== 演示数据 =====
+function initDemoData() {
+    allTasks = [
+        { id: 'demo1', title: '完成Q3财务报表', teams: ['GL', 'AP'], month: '2025-06', date: '2025-06-15', type: '财务报告', assignee: '张三', receiver: '李四', cycle: '每季度' },
+        { id: 'demo2', title: '供应商付款审核', teams: ['AP'], month: '2025-06', date: '2025-06-20', type: '付款审核', assignee: '王五', receiver: '赵六', cycle: '每月' },
+        { id: 'demo3', title: '客户对账', teams: ['AR'], month: '2025-06', date: '2025-06-25', type: '对账', assignee: '李四', receiver: '张三', cycle: '每月' },
+        { id: 'demo4', title: '库存盘点', teams: ['SCMC'], month: '2025-06', date: '2025-06-30', type: '盘点', assignee: '赵六', receiver: '王五', cycle: '每月' },
+        { id: 'demo5', title: '资金计划编制', teams: ['Treasury'], month: '2025-06', date: '2025-06-10', type: '资金计划', assignee: '张三', receiver: '李四', cycle: '每月' }
+    ];
 }
 
 // ===== 标签页切换 =====
@@ -545,7 +379,6 @@ function onDateChange(element) {
         var monthCell = element.closest('tr').querySelector('.month-display');
         if (monthCell) monthCell.textContent = monthValue;
         updateAllViews();
-        if (isFeishuReady) updateTaskToFeishu(task);
     }
 }
 
@@ -576,7 +409,6 @@ function onTeamMultiSelectChange(checkbox) {
         var display = checkbox.closest('.multi-select-dropdown').querySelector('.multi-select-display');
         display.innerHTML = task.teams.length > 0 ? task.teams.join(', ') : '<span class="placeholder">选择团队</span>';
         updateAllViews();
-        if (isFeishuReady) updateTaskToFeishu(task);
     }
 }
 
@@ -596,27 +428,15 @@ function onCellChange(element) {
     if (task) {
         task[field] = value;
         updateAllViews();
-        if (isFeishuReady) updateTaskToFeishu(task);
     }
 }
 
 async function addNewRow() {
     var newTask = { id: 'temp_' + Date.now(), title: '', month: '', date: '', type: '', assignee: '', receiver: '', cycle: '', teams: [] };
-
-    if (isFeishuReady) {
-        var saved = await createTaskToFeishu(newTask);
-        if (saved) {
-            allTasks.push(saved);
-            renderBitable();
-            updateAllViews();
-            showToast('已添加到飞书', 'success');
-        }
-    } else {
-        allTasks.push(newTask);
-        renderBitable();
-        updateAllViews();
-        showToast('演示模式：仅本地添加', 'info');
-    }
+    allTasks.push(newTask);
+    renderBitable();
+    updateAllViews();
+    showToast('已添加（本地模式）', 'info');
 
     setTimeout(function() {
         var tbody = document.getElementById('bitableBody');
@@ -632,9 +452,6 @@ async function addNewRow() {
 
 async function deleteTask(id) {
     if (!confirm('确定要删除这条任务吗？')) return;
-    if (isFeishuReady) {
-        await deleteTaskFromFeishu(id);
-    }
     allTasks = allTasks.filter(function(t) { return t.id !== id; });
     renderBitable();
     updateAllViews();
