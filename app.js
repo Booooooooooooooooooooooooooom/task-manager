@@ -17,8 +17,6 @@ let calendarInstance = null;
 let currentUser = null;
 let isFeishuReady = false;
 let isLoading = false;
-let tenantToken = '';
-let tokenExpireTime = 0;
 
 // ===== 常量定义 =====
 const TEAM_OPTIONS = ['AP', 'AR', 'GL', 'SCMC', 'Treasury'];
@@ -26,6 +24,8 @@ const CYCLE_OPTIONS = ['每年', '每半年', '每季度', '每月', '每两周'
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 页面加载完成，开始初始化...');
+    console.log('📍 window.h5 是否存在:', typeof window.h5 !== 'undefined');
     initFeishu();
 });
 
@@ -33,13 +33,16 @@ document.addEventListener('DOMContentLoaded', function() {
 function initFeishu() {
     updateStatus('正在连接飞书...', 'loading');
 
+    // 立即检查 h5 对象
     if (typeof window.h5 !== 'undefined') {
+        console.log('✅ 检测到飞书环境 h5 SDK');
         window.h5.ready(() => {
-            console.log('✅ 飞书 SDK 已就绪');
+            console.log('✅ 飞书 SDK ready 回调触发');
             isFeishuReady = true;
 
             window.h5.getUserInfo({
                 success: (res) => {
+                    console.log('✅ 获取用户信息成功:', res);
                     currentUser = res;
                     updateStatus(`已登录: ${res.name}`, 'success');
                     updateUserInfo(res.name);
@@ -47,14 +50,43 @@ function initFeishu() {
                 },
                 fail: (err) => {
                     console.error('❌ 获取用户信息失败:', err);
-                    updateStatus('获取用户信息失败', 'error');
+                    updateStatus('获取用户信息失败，使用本地模式', 'warning');
                     initApp();
                 }
             });
         });
+
+        // 超时处理：如果 3 秒后还没 ready，尝试直接初始化
+        setTimeout(() => {
+            if (!isFeishuReady) {
+                console.log('⚠️ h5.ready 超时，尝试直接获取用户信息...');
+                try {
+                    window.h5.getUserInfo({
+                        success: (res) => {
+                            currentUser = res;
+                            isFeishuReady = true;
+                            updateStatus(`已登录: ${res.name}`, 'success');
+                            updateUserInfo(res.name);
+                            initApp();
+                        },
+                        fail: () => {
+                            console.log('⚠️ 无法获取用户信息，使用本地模式');
+                            updateStatus('无法获取飞书用户信息', 'warning');
+                            initApp();
+                        }
+                    });
+                } catch (e) {
+                    console.error('获取用户信息异常:', e);
+                    updateStatus('飞书连接异常', 'error');
+                    initApp();
+                }
+            }
+        }, 3000);
+
     } else {
-        console.log('⚠️ 不在飞书环境，使用演示模式');
-        updateStatus('演示模式（请在飞书内打开）', 'warning');
+        console.log('⚠️ 未检测到飞书环境 h5 SDK');
+        console.log('💡 请确认：1. 在飞书工作台打开应用 2. 应用已正确配置网页能力 3. 应用已发布');
+        updateStatus('演示模式（请在飞书工作台中打开）', 'warning');
         initApp();
     }
 }
@@ -65,6 +97,7 @@ function updateStatus(message, type) {
         statusEl.textContent = message;
         statusEl.className = 'login-status ' + type;
     }
+    console.log('📊 状态更新:', message, '(' + type + ')');
 }
 
 function updateUserInfo(name) {
@@ -73,15 +106,16 @@ function updateUserInfo(name) {
 }
 
 // ===== 飞书 API 调用封装 =====
-// 使用飞书 JS SDK 的 request 方法调用后端 API
 async function callFeishuAPI(method, path, body) {
     return new Promise((resolve, reject) => {
-        if (typeof window.h5 === 'undefined') {
+        if (!isFeishuReady || typeof window.h5 === 'undefined') {
             reject(new Error('不在飞书环境'));
             return;
         }
 
         const url = `${BITABLE_API}/${FEISHU_CONFIG.appToken}${path}`;
+        console.log('📡 飞书 API 调用:', method, url);
+
         const options = {
             url: url,
             method: method,
@@ -89,7 +123,7 @@ async function callFeishuAPI(method, path, body) {
                 'Content-Type': 'application/json'
             },
             success: (res) => {
-                console.log(`API ${method} ${path} 成功:`, res);
+                console.log('✅ API 成功:', res);
                 if (res.code === 0) {
                     resolve(res.data);
                 } else {
@@ -97,7 +131,7 @@ async function callFeishuAPI(method, path, body) {
                 }
             },
             fail: (err) => {
-                console.error(`API ${method} ${path} 失败:`, err);
+                console.error('❌ API 失败:', err);
                 reject(new Error(err.message || '网络请求失败'));
             }
         };
@@ -112,12 +146,15 @@ async function callFeishuAPI(method, path, body) {
 
 // ===== 初始化应用 =====
 async function initApp() {
+    console.log('🔧 开始初始化应用...');
     showLoading('正在加载数据...');
 
     try {
         if (isFeishuReady) {
+            console.log('📥 开始从飞书加载数据...');
             await loadFromFeishu();
         } else {
+            console.log('📥 使用演示数据...');
             initDemoData();
         }
 
@@ -133,7 +170,7 @@ async function initApp() {
         }, 30000);
 
     } catch (error) {
-        console.error('初始化失败:', error);
+        console.error('❌ 初始化失败:', error);
         initDemoData();
         updateAllViews();
     } finally {
@@ -173,7 +210,7 @@ function hideLoading() {
 // ===== 从飞书加载数据（真实 API）=====
 async function loadFromFeishu() {
     if (!isFeishuReady) {
-        alert('请在飞书环境中使用');
+        showToast('请在飞书工作台中打开此应用', 'error');
         return;
     }
 
@@ -187,7 +224,7 @@ async function loadFromFeishu() {
             allTasks = data.items.map(recordToTask);
             console.log(`✅ 成功加载 ${allTasks.length} 条记录`);
             updateAllViews();
-            showToast(`已加载 ${allTasks.length} 条任务`);
+            showToast(`已加载 ${allTasks.length} 条任务`, 'success');
         } else {
             console.log('⚠️ 多维表格为空');
             allTasks = [];
@@ -198,7 +235,6 @@ async function loadFromFeishu() {
     } catch (error) {
         console.error('❌ 加载失败:', error);
         showToast('加载失败: ' + error.message, 'error');
-        // 加载失败时使用演示数据
         initDemoData();
         updateAllViews();
     } finally {
@@ -225,8 +261,10 @@ async function silentRefresh() {
 
 // ===== 手动刷新按钮 =====
 async function manualRefresh() {
+    console.log('🔄 手动刷新被点击, isFeishuReady:', isFeishuReady);
     if (!isFeishuReady) {
-        showToast('请在飞书环境中使用', 'error');
+        showToast('请在飞书工作台中打开此应用', 'error');
+        console.log('💡 当前不在飞书环境，无法刷新');
         return;
     }
     await loadFromFeishu();
@@ -265,7 +303,6 @@ function taskToRecord(task) {
 }
 
 // ===== 日期格式转换 =====
-// 飞书日期字段是数字格式如 20250615，转换为 2025-06-15
 function formatDateValue(val) {
     if (!val) return '';
     const str = String(val);
@@ -601,6 +638,7 @@ async function addNewRow() {
         allTasks.push(newTask);
         renderBitable();
         updateAllViews();
+        showToast('演示模式：仅本地添加', 'info');
     }
 
     setTimeout(function() {
