@@ -171,10 +171,19 @@ async function deleteTaskFromServer(taskId) {
 // ===== 飞书记录 → 本地任务 =====
 function recordToTask(record) {
     var f = record.fields;
+    
+    // 处理团队字段 - 可能是数组或字符串
+    var teams = f['团队'] || [];
+    if (typeof teams === 'string') {
+        teams = teams.split(',').map(function(t) { return t.trim(); });
+    } else if (!Array.isArray(teams)) {
+        teams = [];
+    }
+    
     return {
         id: record.record_id,
         title: f['事项(月份+事项)'] || '',
-        teams: f['团队'] || [],
+        teams: teams,
         month: f['月份'] || '',
         date: formatDateValue(f['日期']),
         type: f['事项类型'] || '',
