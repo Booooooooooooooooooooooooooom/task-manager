@@ -111,7 +111,7 @@ async function createTask(task) {
         });
         const data = await response.json();
         if (data.code === 0 && data.data) {
-            return recordToTask(data.data.record);
+            return recordToTask(data.data);
         }
         throw new Error(data.msg || '创建失败');
     } catch (error) {
@@ -161,12 +161,12 @@ async function deleteTaskFromServer(taskId) {
 
 // ===== 飞书记录 转 本地任务 =====
 function recordToTask(record) {
-    var f = record.fields;
+    var f = record.fields || {};
     
     // 处理团队字段 - 可能是数组或字符串
     var teams = f['团队'];
     if (typeof teams === 'string') {
-        teams = teams.split(',').map(function(t) { return t.trim(); });
+        teams = teams.split(/[,，]/).map(function(t) { return t.trim(); }).filter(function(t) { return t; });
     } else if (Array.isArray(teams)) {
         teams = teams;
     } else {
@@ -178,7 +178,7 @@ function recordToTask(record) {
         title: f['事项(月份+事项)'] || '',
         teams: teams,
         month: f['月份'] || '',
-        date: formatDateValue(f['日期']),
+        date: f['日期'] || '',
         type: f['事项类型'] || '',
         assignee: f['责任人'] || '',
         receiver: f['接收人'] || '',
@@ -193,7 +193,7 @@ function taskToRecord(task) {
             '事项(月份+事项)': task.title || '',
             '团队': task.teams || [],
             '月份': task.month || '',
-            '日期': task.date ? parseInt(task.date.replace(/-/g, '')) : null,
+            '日期': task.date || '',
             '事项类型': task.type || '',
             '责任人': task.assignee || '',
             '接收人': task.receiver || '',
@@ -281,7 +281,9 @@ function switchTab(tabName) {
     });
     document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
     document.getElementById(tabName).classList.add('active');
-    if (tabName === 'calendar' && calendarInstance) calendarInstance.updateSize();
+    if (tabName === 'calendar' && calendarInstance) {
+        setTimeout(function() { calendarInstance.updateSize(); }, 100);
+    }
 }
 
 // ===== 任务总览 =====
@@ -362,33 +364,66 @@ function updateCycleChart(tasks) {
 // ===== 日历视图 =====
 function initCalendar() {
     var calendarEl = document.getElementById('calendarView');
+    if (!calendarEl) return;
+    
     calendarEl.style.height = '650px';
-    var dates = allTasks.map(function(t) { return t.date; }).filter(function(d) { return d; }).sort();
+    
+    // 获取第一个有日期的任务作为初始日期
+    var dates = allTasks.map(function(t) { return t.date; }).filter(function(d) { return d && d.length === 10; }).sort();
     var initialDate = dates.length > 0 ? dates[0] : '2025-06-01';
+    
     calendarInstance = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth', initialDate: initialDate, locale: 'zh-cn', firstDay: 1,
-        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
-        events: [], eventDisplay: 'block', displayEventTime: false,
+        initialView: 'dayGridMonth',
+        initialDate: initialDate,
+        locale: 'zh-cn',
+        firstDay: 1,
+        headerToolbar: { 
+            left: 'prev,next today', 
+            center: 'title', 
+            right: 'dayGridMonth,timeGridWeek,timeGridDay' 
+        },
+        events: [],
+        eventDisplay: 'block',
+        displayEventTime: false,
         eventClick: function(info) {
             var p = info.event.extendedProps;
             alert('事项：' + p.title + '\n团队：' + p.teams + '\n责任人：' + p.assignee + '\n接收人：' + p.receiver + '\n周期：' + p.cycle);
         }
     });
+    
     calendarInstance.render();
+    console.log('日历初始化完成，初始日期:', initialDate);
 }
 
 function updateCalendar() {
-    if (!calendarInstance) return;
-    var events = allTasks.filter(function(t) { return t.date; }).map(function(task) {
+    if (!calendarInstance) {
+        console.log('日历实例不存在，重新初始化');
+        initCalendar();
+        return;
+    }
+    
+    var events = allTasks.filter(function(t) { 
+        return t.date && t.date.length === 10; 
+    }).map(function(task) {
         var teamsStr = (task.teams && task.teams.length > 0) ? task.teams.join('/') : '';
         return {
             id: task.id,
             title: teamsStr + ' - ' + (task.title || ''),
-            start: task.date, allDay: true,
+            start: task.date,
+            allDay: true,
             color: getEventColorByTeam(task.teams),
-            extendedProps: { title: task.title, teams: (task.teams || []).join(', '), assignee: task.assignee, receiver: task.receiver, cycle: task.cycle }
+            extendedProps: { 
+                title: task.title, 
+                teams: (task.teams || []).join(', '), 
+                assignee: task.assignee, 
+                receiver: task.receiver, 
+                cycle: task.cycle 
+            }
         };
     });
+    
+    console.log('更新日历事件:', events.length, '条');
+    
     calendarInstance.removeAllEvents();
     calendarInstance.addEventSource(events);
 }
