@@ -30,12 +30,12 @@ async function initApp() {
         initCalendar();
         updateAllViews();
 
-        // 每 30 秒自动刷新
+        // 每 5 分钟自动刷新（节省腾讯云额度）
         setInterval(function() {
             if (!isLoading) {
                 silentRefresh();
             }
-        }, 30000);
+        }, 300000);
 
     } catch (error) {
         console.error('初始化失败:', error);
