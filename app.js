@@ -15,7 +15,7 @@ const CYCLE_OPTIONS = ['每年', '每半年', '每季度', '每月', '每两周'
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 页面加载完成');
+    console.log('页面加载完成');
     initApp();
 });
 
@@ -38,7 +38,7 @@ async function initApp() {
         }, 30000);
 
     } catch (error) {
-        console.error('❌ 初始化失败:', error);
+        console.error('初始化失败:', error);
         updateStatus('服务器连接失败，使用演示数据', 'error');
         initDemoData();
         updateAllViews();
@@ -57,31 +57,23 @@ async function initApp() {
 // ===== 从服务器加载数据 =====
 async function loadFromServer() {
     try {
-        console.log('📥 从服务器加载数据...');
+        console.log('从服务器加载数据...');
         
         const response = await fetch(API_BASE_URL + '/api/tasks');
         const data = await response.json();
         
         if (data.code === 0 && Array.isArray(data.data)) {
-            // 腾讯云 SCF 返回格式: { code: 0, data: [...], total: n }
             allTasks = data.data.map(recordToTask);
-            console.log(`✅ 成功加载 ${allTasks.length} 条记录`);
-            updateStatus(`已加载 ${allTasks.length} 条任务`, 'success');
+            console.log('成功加载 ' + allTasks.length + ' 条记录');
+            updateStatus('已加载 ' + allTasks.length + ' 条任务', 'success');
             updateAllViews();
-            showToast(`已加载 ${allTasks.length} 条任务`, 'success');
-        } else if (data.code === 0 && data.data && data.data.items) {
-            // 兼容旧格式
-            allTasks = data.data.items.map(recordToTask);
-            console.log(`✅ 成功加载 ${allTasks.length} 条记录`);
-            updateStatus(`已加载 ${allTasks.length} 条任务`, 'success');
-            updateAllViews();
-            showToast(`已加载 ${allTasks.length} 条任务`, 'success');
+            showToast('已加载 ' + allTasks.length + ' 条任务', 'success');
         } else {
             throw new Error(data.msg || '加载失败');
         }
         
     } catch (error) {
-        console.error('❌ 加载失败:', error);
+        console.error('加载失败:', error);
         throw error;
     }
 }
@@ -97,7 +89,7 @@ async function silentRefresh() {
 
 // ===== 手动刷新 =====
 async function manualRefresh() {
-    console.log('🔄 手动刷新');
+    console.log('手动刷新');
     showLoading('正在刷新数据...');
     try {
         await loadFromServer();
@@ -123,7 +115,7 @@ async function createTask(task) {
         }
         throw new Error(data.msg || '创建失败');
     } catch (error) {
-        console.error('❌ 创建失败:', error);
+        console.error('创建失败:', error);
         showToast('创建失败: ' + error.message, 'error');
         return null;
     }
@@ -143,7 +135,7 @@ async function updateTask(task) {
         }
         throw new Error(data.msg || '更新失败');
     } catch (error) {
-        console.error('❌ 更新失败:', error);
+        console.error('更新失败:', error);
         showToast('更新失败: ' + error.message, 'error');
         return false;
     }
@@ -160,23 +152,24 @@ async function deleteTaskFromServer(taskId) {
             return true;
         }
         throw new Error(data.msg || '删除失败');
-        return true;
     } catch (error) {
-        console.error('❌ 删除失败:', error);
+        console.error('删除失败:', error);
         showToast('删除失败: ' + error.message, 'error');
         return false;
     }
 }
 
-// ===== 飞书记录 → 本地任务 =====
+// ===== 飞书记录 转 本地任务 =====
 function recordToTask(record) {
     var f = record.fields;
     
     // 处理团队字段 - 可能是数组或字符串
-    var teams = f['团队'] || [];
+    var teams = f['团队'];
     if (typeof teams === 'string') {
         teams = teams.split(',').map(function(t) { return t.trim(); });
-    } else if (!Array.isArray(teams)) {
+    } else if (Array.isArray(teams)) {
+        teams = teams;
+    } else {
         teams = [];
     }
     
@@ -193,7 +186,7 @@ function recordToTask(record) {
     };
 }
 
-// ===== 本地任务 → 飞书记录 =====
+// ===== 本地任务 转 飞书记录 =====
 function taskToRecord(task) {
     return {
         fields: {
@@ -230,7 +223,7 @@ function updateStatus(message, type) {
         statusEl.textContent = message;
         statusEl.className = 'login-status ' + type;
     }
-    console.log('📊 状态:', message);
+    console.log('状态:', message);
 }
 
 // ===== 显示/隐藏加载状态 =====
@@ -300,7 +293,7 @@ function filterOverview() {
     var startMonth = document.getElementById('overviewStartMonth').value;
     var endMonth = document.getElementById('overviewEndMonth').value;
     var filtered = allTasks.slice();
-    if (selectedTeam) filtered = filtered.filter(function(t) { return t.teams && t.teams.includes(selectedTeam); });
+    if (selectedTeam) filtered = filtered.filter(function(t) { return t.teams && t.teams.indexOf(selectedTeam) >= 0; });
     if (startMonth) filtered = filtered.filter(function(t) { return (t.month || '') >= startMonth; });
     if (endMonth) filtered = filtered.filter(function(t) { return (t.month || '') <= endMonth; });
     renderOverviewTaskList(filtered);
@@ -320,7 +313,8 @@ function renderOverviewTaskList(tasks) {
     tbody.innerHTML = '';
     tasks.forEach(function(task) {
         var row = document.createElement('tr');
-        row.innerHTML = '<td>' + (task.title || '') + '</td><td>' + (task.teams ? task.teams.join(', ') : '') + '</td><td>' + (task.month || '') + '</td><td>' + (task.date || '') + '</td><td>' + (task.type || '') + '</td><td>' + (task.assignee || '') + '</td><td>' + (task.receiver || '') + '</td><td>' + (task.cycle || '') + '</td>';
+        var teamsStr = (task.teams && task.teams.length > 0) ? task.teams.join(', ') : '';
+        row.innerHTML = '<td>' + (task.title || '') + '</td><td>' + teamsStr + '</td><td>' + (task.month || '') + '</td><td>' + (task.date || '') + '</td><td>' + (task.type || '') + '</td><td>' + (task.assignee || '') + '</td><td>' + (task.receiver || '') + '</td><td>' + (task.cycle || '') + '</td>';
         tbody.appendChild(row);
     });
     document.getElementById('overviewCount').textContent = tasks.length;
@@ -338,7 +332,13 @@ function updateCharts(tasks) { updateTeamChart(tasks); updateCycleChart(tasks); 
 function updateTeamChart(tasks) {
     var ctx = document.getElementById('teamChart').getContext('2d');
     var teamData = {};
-    tasks.forEach(function(t) { if (t.teams) t.teams.forEach(function(team) { teamData[team] = (teamData[team] || 0) + 1; }); });
+    tasks.forEach(function(t) { 
+        if (t.teams) {
+            t.teams.forEach(function(team) { 
+                teamData[team] = (teamData[team] || 0) + 1; 
+            }); 
+        }
+    });
     if (teamChartInstance) teamChartInstance.destroy();
     teamChartInstance = new Chart(ctx, {
         type: 'bar',
@@ -380,12 +380,13 @@ function initCalendar() {
 function updateCalendar() {
     if (!calendarInstance) return;
     var events = allTasks.filter(function(t) { return t.date; }).map(function(task) {
+        var teamsStr = (task.teams && task.teams.length > 0) ? task.teams.join('/') : '';
         return {
             id: task.id,
-            title: (task.teams ? task.teams.join('/') : '') + ' - ' + (task.title || ''),
+            title: teamsStr + ' - ' + (task.title || ''),
             start: task.date, allDay: true,
             color: getEventColorByTeam(task.teams),
-            extendedProps: { title: task.title, teams: task.teams ? task.teams.join(', ') : '', assignee: task.assignee, receiver: task.receiver, cycle: task.cycle }
+            extendedProps: { title: task.title, teams: (task.teams || []).join(', '), assignee: task.assignee, receiver: task.receiver, cycle: task.cycle }
         };
     });
     calendarInstance.removeAllEvents();
@@ -405,6 +406,7 @@ function renderBitable() {
     allTasks.forEach(function(task, index) {
         var row = document.createElement('tr');
         row.dataset.id = task.id;
+        var teamsStr = (task.teams && task.teams.length > 0) ? task.teams.join(', ') : '';
         row.innerHTML = '<td><span class="seq-number">' + (index + 1) + '</span></td><td><div class="cell" contenteditable="true" data-field="title" data-id="' + task.id + '">' + (task.title || '') + '</div></td><td><div class="cell-multi-select" data-field="teams" data-id="' + task.id + '">' + renderTeamMultiSelect(task.teams, task.id) + '</div></td><td><div class="cell month-display" data-field="month" data-id="' + task.id + '">' + (task.month || '') + '</div></td><td><div class="cell-select"><input type="date" data-field="date" data-id="' + task.id + '" value="' + (task.date || '') + '" onchange="onDateChange(this)" style="border:none;background:transparent;font-size:14px;padding:6px 0;width:100%;outline:none;"></div></td><td><div class="cell" contenteditable="true" data-field="type" data-id="' + task.id + '">' + (task.type || '') + '</div></td><td><div class="cell" contenteditable="true" data-field="assignee" data-id="' + task.id + '">' + (task.assignee || '') + '</div></td><td><div class="cell" contenteditable="true" data-field="receiver" data-id="' + task.id + '">' + (task.receiver || '') + '</div></td><td><div class="cell-select"><select data-field="cycle" data-id="' + task.id + '" onchange="onCellChange(this)">' + getOptionsHtml(CYCLE_OPTIONS, task.cycle) + '</select></div></td><td style="text-align:center"><button class="btn-delete" onclick="deleteTask(\'' + task.id + '\')" title="删除">🗑</button></td>';
         tbody.appendChild(row);
     });
@@ -436,9 +438,11 @@ function onDateChange(element) {
 
 function renderTeamMultiSelect(selectedTeams, taskId) {
     var teams = selectedTeams || [];
-    var html = '<div class="multi-select-dropdown" data-id="' + taskId + '"><div class="multi-select-display" onclick="toggleTeamDropdown(\'' + taskId + '\')">' + (teams.length > 0 ? teams.join(', ') : '<span class="placeholder">选择团队</span>') + '</div><div class="multi-select-options" id="team-options-' + taskId + '">';
+    var displayText = teams.length > 0 ? teams.join(', ') : '<span class="placeholder">选择团队</span>';
+    var html = '<div class="multi-select-dropdown" data-id="' + taskId + '"><div class="multi-select-display" onclick="toggleTeamDropdown(\'' + taskId + '\')">' + displayText + '</div><div class="multi-select-options" id="team-options-' + taskId + '">';
     TEAM_OPTIONS.forEach(function(team) {
-        html += '<label class="multi-select-option"><input type="checkbox" class="team-checkbox" value="' + team + '" data-id="' + taskId + '"' + (teams.includes(team) ? ' checked' : '') + '><span>' + team + '</span></label>';
+        var isChecked = teams.indexOf(team) >= 0 ? ' checked' : '';
+        html += '<label class="multi-select-option"><input type="checkbox" class="team-checkbox" value="' + team + '" data-id="' + taskId + '"' + isChecked + '><span>' + team + '</span></label>';
     });
     html += '</div></div>';
     return html;
