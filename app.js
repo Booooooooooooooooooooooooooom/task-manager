@@ -24,8 +24,7 @@ const CYCLE_OPTIONS = ['每年', '每半年', '每季度', '每月', '每两周'
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 页面加载完成，开始初始化...');
-    console.log('📍 window.h5 是否存在:', typeof window.h5 !== 'undefined');
+    console.log('🚀 页面加载完成');
     initFeishu();
 });
 
@@ -33,59 +32,57 @@ document.addEventListener('DOMContentLoaded', function() {
 function initFeishu() {
     updateStatus('正在连接飞书...', 'loading');
 
-    // 立即检查 h5 对象
-    if (typeof window.h5 !== 'undefined') {
-        console.log('✅ 检测到飞书环境 h5 SDK');
-        window.h5.ready(() => {
-            console.log('✅ 飞书 SDK ready 回调触发');
-            isFeishuReady = true;
+    // 检查 tt 对象（飞书 JSAPI）
+    if (typeof tt !== 'undefined') {
+        console.log('✅ 检测到飞书 JSAPI (tt)');
 
-            window.h5.getUserInfo({
-                success: (res) => {
+        // 使用 tt.ready 等待 SDK 就绪
+        tt.ready(function() {
+            console.log('✅ 飞书 JSAPI ready');
+
+            // 获取用户信息
+            tt.getUserInfo({
+                success: function(res) {
                     console.log('✅ 获取用户信息成功:', res);
-                    currentUser = res;
-                    updateStatus(`已登录: ${res.name}`, 'success');
-                    updateUserInfo(res.name);
+                    isFeishuReady = true;
+                    currentUser = res.userInfo || res;
+                    updateStatus('已登录: ' + (currentUser.name || currentUser.nickName || '用户'), 'success');
+                    updateUserInfo(currentUser.name || currentUser.nickName || '用户');
                     initApp();
                 },
-                fail: (err) => {
+                fail: function(err) {
                     console.error('❌ 获取用户信息失败:', err);
-                    updateStatus('获取用户信息失败，使用本地模式', 'warning');
+                    // 即使没有用户信息，也尝试初始化（可能仍能调用 API）
+                    isFeishuReady = true;
+                    updateStatus('已连接飞书', 'success');
                     initApp();
                 }
             });
         });
 
-        // 超时处理：如果 3 秒后还没 ready，尝试直接初始化
-        setTimeout(() => {
-            if (!isFeishuReady) {
-                console.log('⚠️ h5.ready 超时，尝试直接获取用户信息...');
-                try {
-                    window.h5.getUserInfo({
-                        success: (res) => {
-                            currentUser = res;
-                            isFeishuReady = true;
-                            updateStatus(`已登录: ${res.name}`, 'success');
-                            updateUserInfo(res.name);
-                            initApp();
-                        },
-                        fail: () => {
-                            console.log('⚠️ 无法获取用户信息，使用本地模式');
-                            updateStatus('无法获取飞书用户信息', 'warning');
-                            initApp();
-                        }
-                    });
-                } catch (e) {
-                    console.error('获取用户信息异常:', e);
-                    updateStatus('飞书连接异常', 'error');
+    } else if (typeof window.h5 !== 'undefined') {
+        // 备用：检查 h5 SDK
+        console.log('✅ 检测到飞书 H5 SDK');
+        window.h5.ready(function() {
+            console.log('✅ H5 SDK ready');
+            isFeishuReady = true;
+            window.h5.getUserInfo({
+                success: function(res) {
+                    currentUser = res;
+                    updateStatus('已登录: ' + res.name, 'success');
+                    updateUserInfo(res.name);
+                    initApp();
+                },
+                fail: function() {
+                    updateStatus('已连接飞书', 'success');
                     initApp();
                 }
-            }
-        }, 3000);
+            });
+        });
 
     } else {
-        console.log('⚠️ 未检测到飞书环境 h5 SDK');
-        console.log('💡 请确认：1. 在飞书工作台打开应用 2. 应用已正确配置网页能力 3. 应用已发布');
+        console.log('⚠️ 未检测到飞书环境');
+        console.log('💡 请通过飞书工作台打开此应用');
         updateStatus('演示模式（请在飞书工作台中打开）', 'warning');
         initApp();
     }
@@ -97,64 +94,70 @@ function updateStatus(message, type) {
         statusEl.textContent = message;
         statusEl.className = 'login-status ' + type;
     }
-    console.log('📊 状态更新:', message, '(' + type + ')');
+    console.log('📊 状态:', message);
 }
 
 function updateUserInfo(name) {
     const userInfoEl = document.getElementById('userInfo');
-    if (userInfoEl) userInfoEl.textContent = `当前用户: ${name}`;
+    if (userInfoEl) userInfoEl.textContent = '当前用户: ' + name;
 }
 
 // ===== 飞书 API 调用封装 =====
 async function callFeishuAPI(method, path, body) {
-    return new Promise((resolve, reject) => {
-        if (!isFeishuReady || typeof window.h5 === 'undefined') {
+    return new Promise(function(resolve, reject) {
+        if (!isFeishuReady) {
             reject(new Error('不在飞书环境'));
             return;
         }
 
-        const url = `${BITABLE_API}/${FEISHU_CONFIG.appToken}${path}`;
-        console.log('📡 飞书 API 调用:', method, url);
+        const url = BITABLE_API + '/' + FEISHU_CONFIG.appToken + path;
+        console.log('📡 API 调用:', method, url);
 
         const options = {
             url: url,
             method: method,
-            headers: {
+            header: {
                 'Content-Type': 'application/json'
             },
-            success: (res) => {
+            success: function(res) {
                 console.log('✅ API 成功:', res);
-                if (res.code === 0) {
-                    resolve(res.data);
+                var data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+                if (data.code === 0) {
+                    resolve(data.data);
                 } else {
-                    reject(new Error(res.msg || `API 错误 code: ${res.code}`));
+                    reject(new Error(data.msg || 'API 错误: ' + data.code));
                 }
             },
-            fail: (err) => {
+            fail: function(err) {
                 console.error('❌ API 失败:', err);
-                reject(new Error(err.message || '网络请求失败'));
+                reject(new Error(err.errMsg || '网络请求失败'));
             }
         };
 
         if (body) {
-            options.data = body;
+            options.data = JSON.stringify(body);
         }
 
-        window.h5.request(options);
+        // 使用 tt.request 或 h5.request
+        if (typeof tt !== 'undefined') {
+            tt.request(options);
+        } else if (typeof window.h5 !== 'undefined') {
+            window.h5.request(options);
+        } else {
+            reject(new Error('无可用 SDK'));
+        }
     });
 }
 
 // ===== 初始化应用 =====
 async function initApp() {
-    console.log('🔧 开始初始化应用...');
+    console.log('🔧 初始化应用...');
     showLoading('正在加载数据...');
 
     try {
         if (isFeishuReady) {
-            console.log('📥 开始从飞书加载数据...');
             await loadFromFeishu();
         } else {
-            console.log('📥 使用演示数据...');
             initDemoData();
         }
 
@@ -163,7 +166,7 @@ async function initApp() {
         updateAllViews();
 
         // 每 30 秒自动刷新
-        setInterval(() => {
+        setInterval(function() {
             if (isFeishuReady && !isLoading) {
                 silentRefresh();
             }
@@ -180,7 +183,7 @@ async function initApp() {
     // 点击外部关闭下拉
     document.addEventListener('click', function(e) {
         if (!e.target.closest('.multi-select-dropdown')) {
-            document.querySelectorAll('.multi-select-options').forEach(d => d.classList.remove('show'));
+            document.querySelectorAll('.multi-select-options').forEach(function(d) { d.classList.remove('show'); });
         }
     });
 }
@@ -203,11 +206,11 @@ function showLoading(message) {
 
 function hideLoading() {
     isLoading = false;
-    const el = document.getElementById('globalLoading');
+    var el = document.getElementById('globalLoading');
     if (el) el.style.display = 'none';
 }
 
-// ===== 从飞书加载数据（真实 API）=====
+// ===== 从飞书加载数据 =====
 async function loadFromFeishu() {
     if (!isFeishuReady) {
         showToast('请在飞书工作台中打开此应用', 'error');
@@ -216,17 +219,16 @@ async function loadFromFeishu() {
 
     try {
         showLoading('正在从飞书加载数据...');
-        console.log('📥 从飞书多维表格加载数据...');
+        console.log('📥 加载飞书数据...');
 
-        const data = await callFeishuAPI('GET', `/tables/${FEISHU_CONFIG.tableId}/records?page_size=500`);
+        var data = await callFeishuAPI('GET', '/tables/' + FEISHU_CONFIG.tableId + '/records?page_size=500');
 
         if (data && data.items) {
             allTasks = data.items.map(recordToTask);
-            console.log(`✅ 成功加载 ${allTasks.length} 条记录`);
+            console.log('✅ 加载 ' + allTasks.length + ' 条记录');
             updateAllViews();
-            showToast(`已加载 ${allTasks.length} 条任务`, 'success');
+            showToast('已加载 ' + allTasks.length + ' 条任务', 'success');
         } else {
-            console.log('⚠️ 多维表格为空');
             allTasks = [];
             updateAllViews();
             showToast('多维表格暂无数据', 'info');
@@ -242,12 +244,12 @@ async function loadFromFeishu() {
     }
 }
 
-// ===== 静默刷新（不显示 loading）=====
+// ===== 静默刷新 =====
 async function silentRefresh() {
     try {
-        const data = await callFeishuAPI('GET', `/tables/${FEISHU_CONFIG.tableId}/records?page_size=500`);
+        var data = await callFeishuAPI('GET', '/tables/' + FEISHU_CONFIG.tableId + '/records?page_size=500');
         if (data && data.items) {
-            const newTasks = data.items.map(recordToTask);
+            var newTasks = data.items.map(recordToTask);
             if (JSON.stringify(newTasks) !== JSON.stringify(allTasks)) {
                 allTasks = newTasks;
                 updateAllViews();
@@ -259,12 +261,11 @@ async function silentRefresh() {
     }
 }
 
-// ===== 手动刷新按钮 =====
+// ===== 手动刷新 =====
 async function manualRefresh() {
-    console.log('🔄 手动刷新被点击, isFeishuReady:', isFeishuReady);
+    console.log('🔄 手动刷新, isFeishuReady:', isFeishuReady);
     if (!isFeishuReady) {
         showToast('请在飞书工作台中打开此应用', 'error');
-        console.log('💡 当前不在飞书环境，无法刷新');
         return;
     }
     await loadFromFeishu();
@@ -272,7 +273,7 @@ async function manualRefresh() {
 
 // ===== 飞书记录 → 本地任务 =====
 function recordToTask(record) {
-    const f = record.fields;
+    var f = record.fields;
     return {
         id: record.record_id,
         title: f['事项(月份+事项)'] || '',
@@ -305,13 +306,9 @@ function taskToRecord(task) {
 // ===== 日期格式转换 =====
 function formatDateValue(val) {
     if (!val) return '';
-    const str = String(val);
+    var str = String(val);
     if (str.length === 8 && /^\d{8}$/.test(str)) {
         return str.substring(0, 4) + '-' + str.substring(4, 6) + '-' + str.substring(6, 8);
-    }
-    if (typeof val === 'number') {
-        const s = String(val);
-        if (s.length === 8) return s.substring(0, 4) + '-' + s.substring(4, 6) + '-' + s.substring(6, 8);
     }
     return String(val || '');
 }
@@ -320,30 +317,28 @@ function getMonthFromDate(dateStr) {
     return dateStr ? dateStr.substring(0, 7) : '';
 }
 
-// ===== 创建任务到飞书 =====
+// ===== 创建任务 =====
 async function createTaskToFeishu(task) {
     if (!isFeishuReady) return null;
-
     try {
-        const record = taskToRecord(task);
-        const data = await callFeishuAPI('POST', `/tables/${FEISHU_CONFIG.tableId}/records`, record);
+        var record = taskToRecord(task);
+        var data = await callFeishuAPI('POST', '/tables/' + FEISHU_CONFIG.tableId + '/records', record);
         if (data && data.record) {
             return recordToTask(data.record);
         }
     } catch (error) {
-        console.error('❌ 创建任务失败:', error);
+        console.error('❌ 创建失败:', error);
         showToast('创建失败: ' + error.message, 'error');
     }
     return null;
 }
 
-// ===== 更新任务到飞书 =====
+// ===== 更新任务 =====
 async function updateTaskToFeishu(task) {
     if (!isFeishuReady || !task.id) return false;
-
     try {
-        const record = taskToRecord(task);
-        await callFeishuAPI('PUT', `/tables/${FEISHU_CONFIG.tableId}/records/${task.id}`, record);
+        var record = taskToRecord(task);
+        await callFeishuAPI('PUT', '/tables/' + FEISHU_CONFIG.tableId + '/records/' + task.id, record);
         console.log('✅ 已更新:', task.title);
         return true;
     } catch (error) {
@@ -353,12 +348,11 @@ async function updateTaskToFeishu(task) {
     return false;
 }
 
-// ===== 删除任务从飞书 =====
+// ===== 删除任务 =====
 async function deleteTaskFromFeishu(taskId) {
     if (!isFeishuReady || !taskId) return false;
-
     try {
-        await callFeishuAPI('DELETE', `/tables/${FEISHU_CONFIG.tableId}/records/${taskId}`);
+        await callFeishuAPI('DELETE', '/tables/' + FEISHU_CONFIG.tableId + '/records/' + taskId);
         console.log('✅ 已删除:', taskId);
         return true;
     } catch (error) {
@@ -368,7 +362,7 @@ async function deleteTaskFromFeishu(taskId) {
     return false;
 }
 
-// ===== 初始化演示数据 =====
+// ===== 演示数据 =====
 function initDemoData() {
     allTasks = [
         { id: 'demo1', title: '完成Q3财务报表', teams: ['GL', 'AP'], month: '2025-06', date: '2025-06-15', type: '财务报告', assignee: '张三', receiver: '李四', cycle: '每季度' },
@@ -379,10 +373,10 @@ function initDemoData() {
     ];
 }
 
-// ===== Toast 提示 =====
+// ===== Toast =====
 function showToast(message, type) {
     type = type || 'info';
-    const toast = document.createElement('div');
+    var toast = document.createElement('div');
     toast.className = 'toast toast-' + type;
     toast.textContent = message;
     document.body.appendChild(toast);
@@ -406,14 +400,13 @@ function switchTab(tabName) {
 
 // ===== 任务总览 =====
 function initOverview() { filterOverview(); }
-
 function getSelectedTeam() { return document.getElementById('teamFilter').value; }
 
 function filterOverview() {
-    const selectedTeam = getSelectedTeam();
-    const startMonth = document.getElementById('overviewStartMonth').value;
-    const endMonth = document.getElementById('overviewEndMonth').value;
-    let filtered = allTasks.slice();
+    var selectedTeam = getSelectedTeam();
+    var startMonth = document.getElementById('overviewStartMonth').value;
+    var endMonth = document.getElementById('overviewEndMonth').value;
+    var filtered = allTasks.slice();
     if (selectedTeam) filtered = filtered.filter(function(t) { return t.teams && t.teams.includes(selectedTeam); });
     if (startMonth) filtered = filtered.filter(function(t) { return (t.month || '') >= startMonth; });
     if (endMonth) filtered = filtered.filter(function(t) { return (t.month || '') <= endMonth; });
@@ -430,19 +423,11 @@ function resetOverviewFilter() {
 }
 
 function renderOverviewTaskList(tasks) {
-    const tbody = document.getElementById('overviewTaskList');
+    var tbody = document.getElementById('overviewTaskList');
     tbody.innerHTML = '';
     tasks.forEach(function(task) {
-        const row = document.createElement('tr');
-        row.innerHTML =
-            '<td>' + (task.title || '') + '</td>' +
-            '<td>' + (task.teams ? task.teams.join(', ') : '') + '</td>' +
-            '<td>' + (task.month || '') + '</td>' +
-            '<td>' + (task.date || '') + '</td>' +
-            '<td>' + (task.type || '') + '</td>' +
-            '<td>' + (task.assignee || '') + '</td>' +
-            '<td>' + (task.receiver || '') + '</td>' +
-            '<td>' + (task.cycle || '') + '</td>';
+        var row = document.createElement('tr');
+        row.innerHTML = '<td>' + (task.title || '') + '</td><td>' + (task.teams ? task.teams.join(', ') : '') + '</td><td>' + (task.month || '') + '</td><td>' + (task.date || '') + '</td><td>' + (task.type || '') + '</td><td>' + (task.assignee || '') + '</td><td>' + (task.receiver || '') + '</td><td>' + (task.cycle || '') + '</td>';
         tbody.appendChild(row);
     });
     document.getElementById('overviewCount').textContent = tasks.length;
@@ -458,8 +443,8 @@ function updateOverviewStats(tasks) {
 function updateCharts(tasks) { updateTeamChart(tasks); updateCycleChart(tasks); }
 
 function updateTeamChart(tasks) {
-    const ctx = document.getElementById('teamChart').getContext('2d');
-    const teamData = {};
+    var ctx = document.getElementById('teamChart').getContext('2d');
+    var teamData = {};
     tasks.forEach(function(t) { if (t.teams) t.teams.forEach(function(team) { teamData[team] = (teamData[team] || 0) + 1; }); });
     if (teamChartInstance) teamChartInstance.destroy();
     teamChartInstance = new Chart(ctx, {
@@ -470,8 +455,8 @@ function updateTeamChart(tasks) {
 }
 
 function updateCycleChart(tasks) {
-    const ctx = document.getElementById('cycleChart').getContext('2d');
-    const cycleData = { '每年': 0, '每半年': 0, '每季度': 0, '每月': 0, '每两周': 0, '每周': 0, '一次性': 0 };
+    var ctx = document.getElementById('cycleChart').getContext('2d');
+    var cycleData = { '每年': 0, '每半年': 0, '每季度': 0, '每月': 0, '每两周': 0, '每周': 0, '一次性': 0 };
     tasks.forEach(function(t) { if (cycleData[t.cycle] !== undefined) cycleData[t.cycle]++; });
     if (statusChartInstance) statusChartInstance.destroy();
     statusChartInstance = new Chart(ctx, {
@@ -483,16 +468,16 @@ function updateCycleChart(tasks) {
 
 // ===== 日历视图 =====
 function initCalendar() {
-    const calendarEl = document.getElementById('calendarView');
+    var calendarEl = document.getElementById('calendarView');
     calendarEl.style.height = '650px';
-    const dates = allTasks.map(function(t) { return t.date; }).filter(function(d) { return d; }).sort();
-    const initialDate = dates.length > 0 ? dates[0] : '2025-06-01';
+    var dates = allTasks.map(function(t) { return t.date; }).filter(function(d) { return d; }).sort();
+    var initialDate = dates.length > 0 ? dates[0] : '2025-06-01';
     calendarInstance = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth', initialDate: initialDate, locale: 'zh-cn', firstDay: 1,
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
         events: [], eventDisplay: 'block', displayEventTime: false,
         eventClick: function(info) {
-            const p = info.event.extendedProps;
+            var p = info.event.extendedProps;
             alert('事项：' + p.title + '\n团队：' + p.teams + '\n责任人：' + p.assignee + '\n接收人：' + p.receiver + '\n周期：' + p.cycle);
         }
     });
@@ -501,7 +486,7 @@ function initCalendar() {
 
 function updateCalendar() {
     if (!calendarInstance) return;
-    const events = allTasks.filter(function(t) { return t.date; }).map(function(task) {
+    var events = allTasks.filter(function(t) { return t.date; }).map(function(task) {
         return {
             id: task.id,
             title: (task.teams ? task.teams.join('/') : '') + ' - ' + (task.title || ''),
@@ -519,25 +504,15 @@ function getEventColorByTeam(teams) {
     return (teams && teams.length > 0) ? (colors[teams[0]] || '#3182ce') : '#3182ce';
 }
 
-// ===== 数据源（多维表格）=====
+// ===== 数据源 =====
 function renderBitable() {
-    const tbody = document.getElementById('bitableBody');
+    var tbody = document.getElementById('bitableBody');
     tbody.innerHTML = '';
 
     allTasks.forEach(function(task, index) {
-        const row = document.createElement('tr');
+        var row = document.createElement('tr');
         row.dataset.id = task.id;
-        row.innerHTML =
-            '<td><span class="seq-number">' + (index + 1) + '</span></td>' +
-            '<td><div class="cell" contenteditable="true" data-field="title" data-id="' + task.id + '">' + (task.title || '') + '</div></td>' +
-            '<td><div class="cell-multi-select" data-field="teams" data-id="' + task.id + '">' + renderTeamMultiSelect(task.teams, task.id) + '</div></td>' +
-            '<td><div class="cell month-display" data-field="month" data-id="' + task.id + '">' + (task.month || '') + '</div></td>' +
-            '<td><div class="cell-select"><input type="date" data-field="date" data-id="' + task.id + '" value="' + (task.date || '') + '" onchange="onDateChange(this)" style="border:none;background:transparent;font-size:14px;padding:6px 0;width:100%;outline:none;"></div></td>' +
-            '<td><div class="cell" contenteditable="true" data-field="type" data-id="' + task.id + '">' + (task.type || '') + '</div></td>' +
-            '<td><div class="cell" contenteditable="true" data-field="assignee" data-id="' + task.id + '">' + (task.assignee || '') + '</div></td>' +
-            '<td><div class="cell" contenteditable="true" data-field="receiver" data-id="' + task.id + '">' + (task.receiver || '') + '</div></td>' +
-            '<td><div class="cell-select"><select data-field="cycle" data-id="' + task.id + '" onchange="onCellChange(this)">' + getOptionsHtml(CYCLE_OPTIONS, task.cycle) + '</select></div></td>' +
-            '<td style="text-align:center"><button class="btn-delete" onclick="deleteTask(\'' + task.id + '\')" title="删除">🗑</button></td>';
+        row.innerHTML = '<td><span class="seq-number">' + (index + 1) + '</span></td><td><div class="cell" contenteditable="true" data-field="title" data-id="' + task.id + '">' + (task.title || '') + '</div></td><td><div class="cell-multi-select" data-field="teams" data-id="' + task.id + '">' + renderTeamMultiSelect(task.teams, task.id) + '</div></td><td><div class="cell month-display" data-field="month" data-id="' + task.id + '">' + (task.month || '') + '</div></td><td><div class="cell-select"><input type="date" data-field="date" data-id="' + task.id + '" value="' + (task.date || '') + '" onchange="onDateChange(this)" style="border:none;background:transparent;font-size:14px;padding:6px 0;width:100%;outline:none;"></div></td><td><div class="cell" contenteditable="true" data-field="type" data-id="' + task.id + '">' + (task.type || '') + '</div></td><td><div class="cell" contenteditable="true" data-field="assignee" data-id="' + task.id + '">' + (task.assignee || '') + '</div></td><td><div class="cell" contenteditable="true" data-field="receiver" data-id="' + task.id + '">' + (task.receiver || '') + '</div></td><td><div class="cell-select"><select data-field="cycle" data-id="' + task.id + '" onchange="onCellChange(this)">' + getOptionsHtml(CYCLE_OPTIONS, task.cycle) + '</select></div></td><td style="text-align:center"><button class="btn-delete" onclick="deleteTask(\'' + task.id + '\')" title="删除">🗑</button></td>';
         tbody.appendChild(row);
     });
 
@@ -552,14 +527,14 @@ function renderBitable() {
 }
 
 function onDateChange(element) {
-    const id = element.dataset.id;
-    const dateValue = element.value;
-    const monthValue = getMonthFromDate(dateValue);
-    const task = allTasks.find(function(t) { return t.id === id; });
+    var id = element.dataset.id;
+    var dateValue = element.value;
+    var monthValue = getMonthFromDate(dateValue);
+    var task = allTasks.find(function(t) { return t.id === id; });
     if (task) {
         task.date = dateValue;
         task.month = monthValue;
-        const monthCell = element.closest('tr').querySelector('.month-display');
+        var monthCell = element.closest('tr').querySelector('.month-display');
         if (monthCell) monthCell.textContent = monthValue;
         updateAllViews();
         if (isFeishuReady) updateTaskToFeishu(task);
@@ -567,11 +542,8 @@ function onDateChange(element) {
 }
 
 function renderTeamMultiSelect(selectedTeams, taskId) {
-    const teams = selectedTeams || [];
-    let html = '<div class="multi-select-dropdown" data-id="' + taskId + '">' +
-        '<div class="multi-select-display" onclick="toggleTeamDropdown(\'' + taskId + '\')">' +
-        (teams.length > 0 ? teams.join(', ') : '<span class="placeholder">选择团队</span>') +
-        '</div><div class="multi-select-options" id="team-options-' + taskId + '">';
+    var teams = selectedTeams || [];
+    var html = '<div class="multi-select-dropdown" data-id="' + taskId + '"><div class="multi-select-display" onclick="toggleTeamDropdown(\'' + taskId + '\')">' + (teams.length > 0 ? teams.join(', ') : '<span class="placeholder">选择团队</span>') + '</div><div class="multi-select-options" id="team-options-' + taskId + '">';
     TEAM_OPTIONS.forEach(function(team) {
         html += '<label class="multi-select-option"><input type="checkbox" class="team-checkbox" value="' + team + '" data-id="' + taskId + '"' + (teams.includes(team) ? ' checked' : '') + '><span>' + team + '</span></label>';
     });
@@ -580,7 +552,7 @@ function renderTeamMultiSelect(selectedTeams, taskId) {
 }
 
 function toggleTeamDropdown(taskId) {
-    const dropdown = document.getElementById('team-options-' + taskId);
+    var dropdown = document.getElementById('team-options-' + taskId);
     document.querySelectorAll('.multi-select-options').forEach(function(d) {
         if (d.id !== 'team-options-' + taskId) d.classList.remove('show');
     });
@@ -588,12 +560,12 @@ function toggleTeamDropdown(taskId) {
 }
 
 function onTeamMultiSelectChange(checkbox) {
-    const taskId = checkbox.dataset.id;
-    const task = allTasks.find(function(t) { return t.id === taskId; });
+    var taskId = checkbox.dataset.id;
+    var task = allTasks.find(function(t) { return t.id === taskId; });
     if (task) {
-        const checked = document.querySelectorAll('.team-checkbox[data-id="' + taskId + '"]:checked');
+        var checked = document.querySelectorAll('.team-checkbox[data-id="' + taskId + '"]:checked');
         task.teams = Array.from(checked).map(function(cb) { return cb.value; });
-        const display = checkbox.closest('.multi-select-dropdown').querySelector('.multi-select-display');
+        var display = checkbox.closest('.multi-select-dropdown').querySelector('.multi-select-display');
         display.innerHTML = task.teams.length > 0 ? task.teams.join(', ') : '<span class="placeholder">选择团队</span>';
         updateAllViews();
         if (isFeishuReady) updateTaskToFeishu(task);
@@ -601,7 +573,7 @@ function onTeamMultiSelectChange(checkbox) {
 }
 
 function getOptionsHtml(options, selectedValue) {
-    let html = '<option value="">--</option>';
+    var html = '<option value="">--</option>';
     options.forEach(function(opt) {
         html += '<option value="' + opt + '"' + (opt === selectedValue ? ' selected' : '') + '>' + opt + '</option>';
     });
@@ -609,10 +581,10 @@ function getOptionsHtml(options, selectedValue) {
 }
 
 function onCellChange(element) {
-    const id = element.dataset.id;
-    const field = element.dataset.field;
-    const value = element.value || element.textContent.trim();
-    const task = allTasks.find(function(t) { return t.id === id; });
+    var id = element.dataset.id;
+    var field = element.dataset.field;
+    var value = element.value || element.textContent.trim();
+    var task = allTasks.find(function(t) { return t.id === id; });
     if (task) {
         task[field] = value;
         updateAllViews();
@@ -621,13 +593,10 @@ function onCellChange(element) {
 }
 
 async function addNewRow() {
-    const newTask = {
-        id: 'temp_' + Date.now(),
-        title: '', month: '', date: '', type: '', assignee: '', receiver: '', cycle: '', teams: []
-    };
+    var newTask = { id: 'temp_' + Date.now(), title: '', month: '', date: '', type: '', assignee: '', receiver: '', cycle: '', teams: [] };
 
     if (isFeishuReady) {
-        const saved = await createTaskToFeishu(newTask);
+        var saved = await createTaskToFeishu(newTask);
         if (saved) {
             allTasks.push(saved);
             renderBitable();
@@ -642,12 +611,12 @@ async function addNewRow() {
     }
 
     setTimeout(function() {
-        const tbody = document.getElementById('bitableBody');
-        const lastRow = tbody.lastElementChild;
+        var tbody = document.getElementById('bitableBody');
+        var lastRow = tbody.lastElementChild;
         if (lastRow) {
             lastRow.classList.add('row-new');
             lastRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            const firstCell = lastRow.querySelector('.cell[contenteditable]');
+            var firstCell = lastRow.querySelector('.cell[contenteditable]');
             if (firstCell) setTimeout(function() { firstCell.focus(); }, 100);
         }
     }, 100);
