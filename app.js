@@ -23,8 +23,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ===== 初始化应用 =====
 async function initApp() {
-    updateStatus('正在加载数据...', 'loading');
-    showLoading('正在加载数据...');
+    updateStatus('正在从飞书加载数据...', 'loading');
+    showLoading('正在从飞书加载数据...');
 
     try {
         // 直接从飞书公开分享加载数据
