@@ -28,19 +28,60 @@ document.addEventListener('DOMContentLoaded', function() {
     initFeishu();
 });
 
-// ===== 飞书初始化 =====
+// ===== 飞书初始化（带重试机制）=====
 function initFeishu() {
     updateStatus('正在连接飞书...', 'loading');
 
-    // 检查 tt 对象（飞书 JSAPI）
-    if (typeof tt !== 'undefined') {
-        console.log('✅ 检测到飞书 JSAPI (tt)');
+    // 尝试检测飞书 SDK，最多重试 5 次
+    var retryCount = 0;
+    var maxRetries = 5;
 
-        // 使用 tt.ready 等待 SDK 就绪
+    function tryInit() {
+        retryCount++;
+        console.log('🔍 第 ' + retryCount + ' 次尝试检测飞书 SDK...');
+
+        // 检查 tt 对象（飞书 JSAPI）
+        if (typeof tt !== 'undefined') {
+            console.log('✅ 检测到飞书 JSAPI (tt)');
+            initWithTT();
+            return;
+        }
+
+        // 备用：检查 h5 SDK
+        if (typeof window.h5 !== 'undefined') {
+            console.log('✅ 检测到飞书 H5 SDK');
+            initWithH5();
+            return;
+        }
+
+        // 检查是否在飞书环境（通过 userAgent）
+        var ua = navigator.userAgent.toLowerCase();
+        var isFeishu = ua.indexOf('feishu') > -1 || ua.indexOf('lark') > -1;
+        console.log('📱 UserAgent:', ua.substring(0, 100));
+        console.log('🔍 是否飞书环境:', isFeishu);
+
+        if (isFeishu && retryCount < maxRetries) {
+            console.log('⏳ 在飞书环境中，SDK 尚未加载，1秒后重试...');
+            setTimeout(tryInit, 1000);
+        } else if (retryCount >= maxRetries) {
+            console.log('⚠️ 重试 ' + maxRetries + ' 次后仍未检测到 SDK');
+            if (isFeishu) {
+                updateStatus('飞书 SDK 加载失败，请刷新重试', 'error');
+            } else {
+                updateStatus('演示模式（请在飞书工作台中打开）', 'warning');
+            }
+            initApp();
+        } else {
+            console.log('⚠️ 未检测到飞书环境');
+            updateStatus('演示模式（请在飞书工作台中打开）', 'warning');
+            initApp();
+        }
+    }
+
+    // 使用 tt SDK
+    function initWithTT() {
         tt.ready(function() {
             console.log('✅ 飞书 JSAPI ready');
-
-            // 获取用户信息
             tt.getUserInfo({
                 success: function(res) {
                     console.log('✅ 获取用户信息成功:', res);
@@ -52,17 +93,16 @@ function initFeishu() {
                 },
                 fail: function(err) {
                     console.error('❌ 获取用户信息失败:', err);
-                    // 即使没有用户信息，也尝试初始化（可能仍能调用 API）
                     isFeishuReady = true;
                     updateStatus('已连接飞书', 'success');
                     initApp();
                 }
             });
         });
+    }
 
-    } else if (typeof window.h5 !== 'undefined') {
-        // 备用：检查 h5 SDK
-        console.log('✅ 检测到飞书 H5 SDK');
+    // 使用 h5 SDK
+    function initWithH5() {
         window.h5.ready(function() {
             console.log('✅ H5 SDK ready');
             isFeishuReady = true;
@@ -79,13 +119,10 @@ function initFeishu() {
                 }
             });
         });
-
-    } else {
-        console.log('⚠️ 未检测到飞书环境');
-        console.log('💡 请通过飞书工作台打开此应用');
-        updateStatus('演示模式（请在飞书工作台中打开）', 'warning');
-        initApp();
     }
+
+    // 开始尝试
+    tryInit();
 }
 
 function updateStatus(message, type) {
