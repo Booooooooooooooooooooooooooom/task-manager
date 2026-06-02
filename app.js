@@ -1,8 +1,6 @@
-// ===== 飞书配置 =====
-const FEISHU_CONFIG = {
-    appToken: 'BnZIbE8xiauxKYsjef5cOw70nFc',
-    tableId: 'tblPwyRZonL7YmLs'
-};
+// ===== API 配置 =====
+// 腾讯云 SCF 函数 URL
+const API_BASE_URL = 'https://1439227087-fulx05vji4.ap-chengdu.tencentscf.com';
 
 // ===== 全局数据 =====
 let allTasks = [];
@@ -23,13 +21,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ===== 初始化应用 =====
 async function initApp() {
-    updateStatus('正在从飞书加载数据...', 'loading');
-    showLoading('正在从飞书加载数据...');
+    updateStatus('正在连接服务器...', 'loading');
+    showLoading('正在加载数据...');
 
     try {
-        // 直接从飞书公开分享加载数据
-        await loadFromFeishuPublic();
-        
+        await loadFromServer();
         initOverview();
         initCalendar();
         updateAllViews();
@@ -43,7 +39,7 @@ async function initApp() {
 
     } catch (error) {
         console.error('❌ 初始化失败:', error);
-        updateStatus('加载失败，使用演示数据', 'error');
+        updateStatus('服务器连接失败，使用演示数据', 'error');
         initDemoData();
         updateAllViews();
     } finally {
@@ -58,44 +54,31 @@ async function initApp() {
     });
 }
 
-// ===== 从飞书公开分享加载数据 =====
-async function loadFromFeishuPublic() {
+// ===== 从服务器加载数据 =====
+async function loadFromServer() {
     try {
-        console.log('📥 从飞书公开分享加载数据...');
+        console.log('📥 从服务器加载数据...');
         
-        // 使用飞书公开 API（通过分享链接访问）
-        // 注意：这需要开启"互联网上获得链接的人可阅读"
-        const url = `https://open.feishu.cn/open-apis/bitable/v1/apps/${FEISHU_CONFIG.appToken}/tables/${FEISHU_CONFIG.tableId}/records?page_size=500`;
+        const response = await fetch(API_BASE_URL + '/api/tasks');
+        const data = await response.json();
         
-        // 尝试使用 fetch 直接访问（可能会遇到 CORS 问题）
-        try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.code === 0 && data.data && data.data.items) {
-                    allTasks = data.data.items.map(recordToTask);
-                    console.log(`✅ 成功加载 ${allTasks.length} 条记录`);
-                    updateStatus(`已加载 ${allTasks.length} 条任务`, 'success');
-                    updateAllViews();
-                    showToast(`已加载 ${allTasks.length} 条任务`, 'success');
-                    return;
-                }
-            }
-        } catch (corsError) {
-            console.log('⚠️ 直接访问遇到 CORS 限制，尝试其他方式...');
+        if (data.code === 0 && Array.isArray(data.data)) {
+            // 腾讯云 SCF 返回格式: { code: 0, data: [...], total: n }
+            allTasks = data.data.map(recordToTask);
+            console.log(`✅ 成功加载 ${allTasks.length} 条记录`);
+            updateStatus(`已加载 ${allTasks.length} 条任务`, 'success');
+            updateAllViews();
+            showToast(`已加载 ${allTasks.length} 条任务`, 'success');
+        } else if (data.code === 0 && data.data && data.data.items) {
+            // 兼容旧格式
+            allTasks = data.data.items.map(recordToTask);
+            console.log(`✅ 成功加载 ${allTasks.length} 条记录`);
+            updateStatus(`已加载 ${allTasks.length} 条任务`, 'success');
+            updateAllViews();
+            showToast(`已加载 ${allTasks.length} 条任务`, 'success');
+        } else {
+            throw new Error(data.msg || '加载失败');
         }
-        
-        // 如果直接访问失败，使用演示数据并提示用户
-        console.log('⚠️ 无法直接访问飞书 API，使用演示数据');
-        updateStatus('无法访问飞书数据（CORS限制），使用演示数据', 'warning');
-        initDemoData();
-        updateAllViews();
         
     } catch (error) {
         console.error('❌ 加载失败:', error);
@@ -106,7 +89,7 @@ async function loadFromFeishuPublic() {
 // ===== 静默刷新 =====
 async function silentRefresh() {
     try {
-        await loadFromFeishuPublic();
+        await loadFromServer();
     } catch (error) {
         console.error('静默刷新失败:', error);
     }
@@ -117,12 +100,71 @@ async function manualRefresh() {
     console.log('🔄 手动刷新');
     showLoading('正在刷新数据...');
     try {
-        await loadFromFeishuPublic();
+        await loadFromServer();
         showToast('数据已刷新', 'success');
     } catch (error) {
         showToast('刷新失败: ' + error.message, 'error');
     } finally {
         hideLoading();
+    }
+}
+
+// ===== 创建任务 =====
+async function createTask(task) {
+    try {
+        const response = await fetch(API_BASE_URL + '/api/tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(taskToRecord(task))
+        });
+        const data = await response.json();
+        if (data.code === 0 && data.data) {
+            return recordToTask(data.data.record);
+        }
+        throw new Error(data.msg || '创建失败');
+    } catch (error) {
+        console.error('❌ 创建失败:', error);
+        showToast('创建失败: ' + error.message, 'error');
+        return null;
+    }
+}
+
+// ===== 更新任务 =====
+async function updateTask(task) {
+    try {
+        const response = await fetch(API_BASE_URL + '/api/tasks/' + task.id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(taskToRecord(task))
+        });
+        const data = await response.json();
+        if (data.code === 0) {
+            return true;
+        }
+        throw new Error(data.msg || '更新失败');
+    } catch (error) {
+        console.error('❌ 更新失败:', error);
+        showToast('更新失败: ' + error.message, 'error');
+        return false;
+    }
+}
+
+// ===== 删除任务 =====
+async function deleteTaskFromServer(taskId) {
+    try {
+        const response = await fetch(API_BASE_URL + '/api/tasks/' + taskId, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        if (data.code === 0) {
+            return true;
+        }
+        throw new Error(data.msg || '删除失败');
+        return true;
+    } catch (error) {
+        console.error('❌ 删除失败:', error);
+        showToast('删除失败: ' + error.message, 'error');
+        return false;
     }
 }
 
@@ -379,6 +421,7 @@ function onDateChange(element) {
         var monthCell = element.closest('tr').querySelector('.month-display');
         if (monthCell) monthCell.textContent = monthValue;
         updateAllViews();
+        updateTask(task);
     }
 }
 
@@ -409,6 +452,7 @@ function onTeamMultiSelectChange(checkbox) {
         var display = checkbox.closest('.multi-select-dropdown').querySelector('.multi-select-display');
         display.innerHTML = task.teams.length > 0 ? task.teams.join(', ') : '<span class="placeholder">选择团队</span>';
         updateAllViews();
+        updateTask(task);
     }
 }
 
@@ -428,15 +472,25 @@ function onCellChange(element) {
     if (task) {
         task[field] = value;
         updateAllViews();
+        updateTask(task);
     }
 }
 
 async function addNewRow() {
     var newTask = { id: 'temp_' + Date.now(), title: '', month: '', date: '', type: '', assignee: '', receiver: '', cycle: '', teams: [] };
-    allTasks.push(newTask);
-    renderBitable();
-    updateAllViews();
-    showToast('已添加（本地模式）', 'info');
+    
+    var saved = await createTask(newTask);
+    if (saved) {
+        allTasks.push(saved);
+        renderBitable();
+        updateAllViews();
+        showToast('已添加到飞书', 'success');
+    } else {
+        allTasks.push(newTask);
+        renderBitable();
+        updateAllViews();
+        showToast('已添加（本地模式）', 'info');
+    }
 
     setTimeout(function() {
         var tbody = document.getElementById('bitableBody');
@@ -452,6 +506,7 @@ async function addNewRow() {
 
 async function deleteTask(id) {
     if (!confirm('确定要删除这条任务吗？')) return;
+    await deleteTaskFromServer(id);
     allTasks = allTasks.filter(function(t) { return t.id !== id; });
     renderBitable();
     updateAllViews();
