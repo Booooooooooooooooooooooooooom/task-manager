@@ -28,101 +28,72 @@ document.addEventListener('DOMContentLoaded', function() {
     initFeishu();
 });
 
-// ===== 飞书初始化（带重试机制）=====
+// ===== 飞书初始化（使用 Lark JS SDK）=====
 function initFeishu() {
     updateStatus('正在连接飞书...', 'loading');
 
-    // 尝试检测飞书 SDK，最多重试 5 次
-    var retryCount = 0;
-    var maxRetries = 5;
+    // 检查是否在飞书环境
+    var ua = navigator.userAgent.toLowerCase();
+    var isFeishu = ua.indexOf('feishu') > -1 || ua.indexOf('lark') > -1;
+    console.log('📱 UserAgent:', ua.substring(0, 100));
+    console.log('🔍 是否飞书环境:', isFeishu);
 
-    function tryInit() {
-        retryCount++;
-        console.log('🔍 第 ' + retryCount + ' 次尝试检测飞书 SDK...');
-
-        // 检查 tt 对象（飞书 JSAPI）
-        if (typeof tt !== 'undefined') {
-            console.log('✅ 检测到飞书 JSAPI (tt)');
-            initWithTT();
-            return;
-        }
-
-        // 备用：检查 h5 SDK
-        if (typeof window.h5 !== 'undefined') {
-            console.log('✅ 检测到飞书 H5 SDK');
-            initWithH5();
-            return;
-        }
-
-        // 检查是否在飞书环境（通过 userAgent）
-        var ua = navigator.userAgent.toLowerCase();
-        var isFeishu = ua.indexOf('feishu') > -1 || ua.indexOf('lark') > -1;
-        console.log('📱 UserAgent:', ua.substring(0, 100));
-        console.log('🔍 是否飞书环境:', isFeishu);
-
-        if (isFeishu && retryCount < maxRetries) {
-            console.log('⏳ 在飞书环境中，SDK 尚未加载，1秒后重试...');
-            setTimeout(tryInit, 1000);
-        } else if (retryCount >= maxRetries) {
-            console.log('⚠️ 重试 ' + maxRetries + ' 次后仍未检测到 SDK');
-            if (isFeishu) {
-                updateStatus('飞书 SDK 加载失败，请刷新重试', 'error');
-            } else {
-                updateStatus('演示模式（请在飞书工作台中打开）', 'warning');
-            }
-            initApp();
-        } else {
-            console.log('⚠️ 未检测到飞书环境');
-            updateStatus('演示模式（请在飞书工作台中打开）', 'warning');
-            initApp();
-        }
+    if (!isFeishu) {
+        console.log('⚠️ 未检测到飞书环境');
+        updateStatus('演示模式（请在飞书工作台中打开）', 'warning');
+        initApp();
+        return;
     }
 
-    // 使用 tt SDK
-    function initWithTT() {
-        tt.ready(function() {
-            console.log('✅ 飞书 JSAPI ready');
-            tt.getUserInfo({
-                success: function(res) {
-                    console.log('✅ 获取用户信息成功:', res);
-                    isFeishuReady = true;
-                    currentUser = res.userInfo || res;
-                    updateStatus('已登录: ' + (currentUser.name || currentUser.nickName || '用户'), 'success');
-                    updateUserInfo(currentUser.name || currentUser.nickName || '用户');
-                    initApp();
-                },
-                fail: function(err) {
-                    console.error('❌ 获取用户信息失败:', err);
-                    isFeishuReady = true;
-                    updateStatus('已连接飞书', 'success');
-                    initApp();
-                }
-            });
-        });
-    }
-
-    // 使用 h5 SDK
-    function initWithH5() {
-        window.h5.ready(function() {
-            console.log('✅ H5 SDK ready');
+    // 使用 @larksuite/js-sdk
+    if (typeof lark !== 'undefined') {
+        console.log('✅ 检测到 Lark JS SDK');
+        
+        lark.init({
+            appId: FEISHU_CONFIG.appId
+        }).then(function() {
+            console.log('✅ Lark SDK 初始化成功');
             isFeishuReady = true;
-            window.h5.getUserInfo({
-                success: function(res) {
-                    currentUser = res;
-                    updateStatus('已登录: ' + res.name, 'success');
-                    updateUserInfo(res.name);
-                    initApp();
-                },
-                fail: function() {
-                    updateStatus('已连接飞书', 'success');
-                    initApp();
-                }
-            });
+            updateStatus('已连接飞书', 'success');
+            initApp();
+        }).catch(function(err) {
+            console.error('❌ Lark SDK 初始化失败:', err);
+            updateStatus('飞书连接失败: ' + (err.message || '未知错误'), 'error');
+            initApp();
         });
+    } else {
+        console.log('⚠️ Lark SDK 未加载，尝试备用方案...');
+        // 备用：尝试直接检测 tt
+        tryTTSDK();
+    }
+}
+
+// 备用：尝试 tt SDK
+function tryTTSDK() {
+    var retryCount = 0;
+    var maxRetries = 3;
+
+    function check() {
+        retryCount++;
+        console.log('🔍 第 ' + retryCount + ' 次尝试检测 tt SDK...');
+
+        if (typeof tt !== 'undefined') {
+            console.log('✅ 检测到 tt SDK');
+            tt.ready(function() {
+                isFeishuReady = true;
+                updateStatus('已连接飞书', 'success');
+                initApp();
+            });
+        } else if (retryCount < maxRetries) {
+            setTimeout(check, 1000);
+        } else {
+            console.log('⚠️ 所有 SDK 都未加载');
+            updateStatus('飞书 SDK 加载失败', 'error');
+            initApp();
+        }
     }
 
-    // 开始尝试
-    tryInit();
+    check();
 }
 
 function updateStatus(message, type) {
