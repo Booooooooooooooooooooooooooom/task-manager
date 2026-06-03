@@ -22,6 +22,11 @@ const TEAM_OPTIONS = ['AP', 'AR', 'GL', 'SCMC', 'Treasury'];
 const CYCLE_OPTIONS = ['每年', '每半年', '每季度', '每月', '每两周', '每周', '一次性'];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
+// ===== localStorage 缓存配置 =====
+const CACHE_KEY = 'ssc_task_cache';
+const CACHE_TIME_KEY = 'ssc_task_cache_time';
+const CACHE_DURATION = 12 * 60 * 60 * 1000; // 12小时
+
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
     console.log('页面加载完成');
@@ -33,24 +38,40 @@ async function initApp() {
     updateStatus('正在连接服务器...', 'loading');
     showLoading('正在加载数据...');
 
+    // 尝试从缓存加载
+    var cachedData = loadFromCache();
+    if (cachedData) {
+        allTasks = cachedData;
+        console.log('从缓存加载 ' + allTasks.length + ' 条记录');
+        initOverview();
+        initCalendar();
+        updateAllViews();
+        hideLoading();
+        updateStatus('已从缓存加载 ' + allTasks.length + ' 条任务', 'success');
+    }
+
     try {
         await loadFromServer();
         initOverview();
         initCalendar();
         updateAllViews();
 
-        // 每 5 分钟自动刷新（节省腾讯云额度）
+        // 每 12 小时自动刷新
         setInterval(function() {
             if (!isLoading) {
                 silentRefresh();
             }
-        }, 300000);
+        }, 43200000); // 12 * 60 * 60 * 1000
 
     } catch (error) {
         console.error('初始化失败:', error);
-        updateStatus('服务器连接失败，使用演示数据', 'error');
-        initDemoData();
-        updateAllViews();
+        if (!cachedData) {
+            updateStatus('服务器连接失败，使用演示数据', 'error');
+            initDemoData();
+            updateAllViews();
+        } else {
+            updateStatus('服务器连接失败，使用缓存数据', 'warning');
+        }
     } finally {
         hideLoading();
     }
@@ -77,6 +98,8 @@ async function loadFromServer() {
             updateStatus('已加载 ' + allTasks.length + ' 条任务', 'success');
             updateAllViews();
             showToast('已加载 ' + allTasks.length + ' 条任务', 'success');
+            // 自动保存到缓存
+            saveToCache(allTasks);
         } else {
             throw new Error(data.msg || '加载失败');
         }
@@ -92,15 +115,30 @@ function transformRecord(record) {
     const f = record.fields || {};
     return {
         id: record.record_id,
-        title: f['事项(月份+事项)'] || '',
+        title: extractString(f['事项(月份+事项)']),
         teams: Array.isArray(f['团队']) ? f['团队'] : (f['团队'] ? [f['团队']] : []),
-        month: f['月份'] || '',
-        date: f['日期'] || '',
-        type: f['事项类型'] || '',
-        assignee: f['责任人'] || '',
-        receiver: f['接收人'] || '',
-        cycle: f['周期类型'] || ''
+        month: extractString(f['月份']),
+        date: extractString(f['日期']),
+        type: extractString(f['事项类型']),
+        assignee: extractString(f['责任人']),
+        receiver: extractString(f['接收人']),
+        cycle: extractString(f['周期类型'])
     };
+}
+
+// ===== 安全提取字符串值（防止 [object Object]）=====
+function extractString(val) {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number') return String(val);
+    if (Array.isArray(val)) return val.map(function(v) { return extractString(v); }).filter(function(v) { return v; }).join(', ');
+    if (typeof val === 'object') {
+        if (val.text !== undefined && val.text !== null) return String(val.text);
+        if (val.value !== undefined && val.value !== null) return String(val.value);
+        if (val.name !== undefined && val.name !== null) return String(val.name);
+        return '';
+    }
+    return String(val);
 }
 
 // ===== 转换任务对象为飞书记录格式 =====
@@ -115,6 +153,43 @@ function taskToRecord(task) {
             '周期类型': task.cycle || ''
         }
     };
+}
+
+// ===== localStorage 缓存 =====
+function saveToCache(tasks) {
+    try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(tasks));
+        localStorage.setItem(CACHE_TIME_KEY, String(Date.now()));
+        console.log('数据已保存到缓存');
+    } catch (e) {
+        console.warn('缓存保存失败:', e);
+    }
+}
+
+function loadFromCache() {
+    try {
+        var cacheTime = localStorage.getItem(CACHE_TIME_KEY);
+        var cacheData = localStorage.getItem(CACHE_KEY);
+        
+        if (!cacheData || !cacheTime) return null;
+        
+        // 检查缓存是否过期
+        var elapsed = Date.now() - parseInt(cacheTime);
+        if (elapsed > CACHE_DURATION) {
+            console.log('缓存已过期 (' + Math.round(elapsed / 3600000) + '小时前)');
+            return null;
+        }
+        
+        var tasks = JSON.parse(cacheData);
+        if (Array.isArray(tasks) && tasks.length > 0) {
+            console.log('缓存有效，' + Math.round(elapsed / 60000) + '分钟前保存');
+            return tasks;
+        }
+        return null;
+    } catch (e) {
+        console.warn('缓存读取失败:', e);
+        return null;
+    }
 }
 
 // ===== 静默刷新 =====
@@ -132,7 +207,7 @@ async function manualRefresh() {
     showLoading('正在刷新数据...');
     try {
         await loadFromServer();
-        showToast('数据已刷新', 'success');
+        showToast('数据已刷新并保存', 'success');
     } catch (error) {
         showToast('刷新失败: ' + error.message, 'error');
     } finally {
@@ -299,7 +374,7 @@ function filterOverview() {
     if (startMonth) filteredTasks = filteredTasks.filter(function(t) { return (t.month || '') >= startMonth; });
     if (endMonth) filteredTasks = filteredTasks.filter(function(t) { return (t.month || '') <= endMonth; });
     
-    currentPage = 1; // 重置到第一页
+    currentPage = 1;
     renderOverviewTaskList();
     updateOverviewStats();
     updateCharts(filteredTasks);
@@ -317,21 +392,19 @@ function changePageSize(newSize) {
     pageSize = parseInt(newSize);
     currentPage = 1;
     renderOverviewTaskList();
-    updatePaginationControls();
 }
 
 function goToPage(page) {
-    var totalPages = Math.ceil(filteredTasks.length / pageSize);
+    var totalPages = Math.max(1, Math.ceil(filteredTasks.length / pageSize));
     if (page < 1) page = 1;
     if (page > totalPages) page = totalPages;
     currentPage = page;
     renderOverviewTaskList();
-    updatePaginationControls();
 }
 
 function updatePaginationControls() {
-    var totalPages = Math.ceil(filteredTasks.length / pageSize);
-    var startItem = (currentPage - 1) * pageSize + 1;
+    var totalPages = Math.max(1, Math.ceil(filteredTasks.length / pageSize));
+    var startItem = filteredTasks.length > 0 ? (currentPage - 1) * pageSize + 1 : 0;
     var endItem = Math.min(currentPage * pageSize, filteredTasks.length);
     
     document.getElementById('paginationInfo').textContent = 
@@ -360,6 +433,7 @@ function updatePaginationControls() {
             var btn = document.createElement('button');
             btn.className = 'page-btn' + (i === currentPage ? ' active' : '');
             btn.textContent = i;
+            btn.setAttribute('data-page', i);
             btn.onclick = (function(p) { return function() { goToPage(p); }; })(i);
             pageNumbers.appendChild(btn);
         }
@@ -438,7 +512,6 @@ function initCalendar() {
     
     calendarEl.style.height = '650px';
     
-    // 获取第一个有日期的任务作为初始日期
     var dates = allTasks.map(function(t) { return t.date; }).filter(function(d) { return d && d.length === 10; }).sort();
     var initialDate = dates.length > 0 ? dates[0] : '2025-06-01';
     
