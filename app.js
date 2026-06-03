@@ -44,7 +44,6 @@ async function initApp() {
         allTasks = cachedData;
         console.log('从缓存加载 ' + allTasks.length + ' 条记录');
         initOverview();
-        initCalendar();
         updateAllViews();
         hideLoading();
         updateStatus('已从缓存加载 ' + allTasks.length + ' 条任务', 'success');
@@ -53,7 +52,6 @@ async function initApp() {
     try {
         await loadFromServer();
         initOverview();
-        initCalendar();
         updateAllViews();
 
         // 每 12 小时自动刷新
@@ -87,14 +85,26 @@ async function initApp() {
 // ===== 从服务器加载数据 =====
 async function loadFromServer() {
     try {
-        console.log('从服务器加载数据...');
-        
+        console.log('从服务器加载数据... URL:', API_BASE_URL + '/api/tasks');
+
         const response = await fetch(API_BASE_URL + '/api/tasks');
         const data = await response.json();
-        
+        console.log('服务器响应:', data);
+
         if (data.code === 0 && Array.isArray(data.data)) {
+            console.log('原始数据条数:', data.data.length);
+            // 打印第一条数据用于调试
+            if (data.data.length > 0) {
+                console.log('第一条原始记录:', JSON.stringify(data.data[0], null, 2));
+            }
+
             allTasks = data.data.map(transformRecord);
-            console.log('成功加载 ' + allTasks.length + ' 条记录');
+            console.log('转换后数据条数:', allTasks.length);
+            // 打印第一条转换后的数据
+            if (allTasks.length > 0) {
+                console.log('第一条转换后记录:', allTasks[0]);
+            }
+
             updateStatus('已加载 ' + allTasks.length + ' 条任务', 'success');
             updateAllViews();
             showToast('已加载 ' + allTasks.length + ' 条任务', 'success');
@@ -103,7 +113,7 @@ async function loadFromServer() {
         } else {
             throw new Error(data.msg || '加载失败');
         }
-        
+
     } catch (error) {
         console.error('加载失败:', error);
         throw error;
@@ -113,16 +123,38 @@ async function loadFromServer() {
 // ===== 转换飞书记录为本任务对象 =====
 function transformRecord(record) {
     const f = record.fields || {};
+
+    // 调试：打印原始字段
+    if (window.location.search.indexOf('debug=1') >= 0) {
+        console.log('transformRecord 原始 fields:', JSON.stringify(f, null, 2));
+    }
+
+    // 处理各种可能的字段名变体
+    var title = extractString(f['事项(月份+事项)'] || f['事项']);
+    var teams = f['团队'];
+    if (!Array.isArray(teams)) {
+        teams = teams ? [teams] : [];
+    }
+    // 确保 teams 是字符串数组
+    teams = teams.map(function(t) { return extractString(t); }).filter(function(t) { return t; });
+
+    var month = extractString(f['月份']);
+    var date = extractString(f['日期']);
+    var type = extractString(f['事项类型']);
+    var assignee = extractString(f['责任人'] || f['责任人 (人员 )']);
+    var receiver = extractString(f['接收人'] || f['接收人 (人员 )']);
+    var cycle = extractString(f['周期类型']);
+
     return {
-        id: record.record_id,
-        title: extractString(f['事项(月份+事项)']),
-        teams: Array.isArray(f['团队']) ? f['团队'] : (f['团队'] ? [f['团队']] : []),
-        month: extractString(f['月份']),
-        date: extractString(f['日期']),
-        type: extractString(f['事项类型']),
-        assignee: extractString(f['责任人']),
-        receiver: extractString(f['接收人']),
-        cycle: extractString(f['周期类型'])
+        id: record.record_id || record.id,
+        title: title,
+        teams: teams,
+        month: month,
+        date: date,
+        type: type,
+        assignee: assignee,
+        receiver: receiver,
+        cycle: cycle
     };
 }
 
@@ -352,8 +384,15 @@ function switchTab(tabName) {
     });
     document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
     document.getElementById(tabName).classList.add('active');
-    if (tabName === 'calendar' && calendarInstance) {
-        setTimeout(function() { calendarInstance.updateSize(); }, 100);
+    if (tabName === 'calendar') {
+        setTimeout(function() {
+            if (!calendarInstance) {
+                initCalendar();
+            } else {
+                calendarInstance.updateSize();
+                calendarInstance.render();
+            }
+        }, 150);
     }
 }
 
@@ -552,34 +591,47 @@ function updateCycleChart(tasks) {
 function initCalendar() {
     var calendarEl = document.getElementById('calendarView');
     if (!calendarEl) return;
-    
+
     calendarEl.style.height = '650px';
-    
-    // 默认展示本月
+
+    // 默认展示本月 - 使用当前日期作为初始日期
     var today = new Date();
-    var currentMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-01';
-    
+    var currentYear = today.getFullYear();
+    var currentMonthNum = today.getMonth() + 1;
+    var currentMonthStr = currentYear + '-' + String(currentMonthNum).padStart(2, '0');
+
+    // 如果日历已存在，先销毁
+    if (calendarInstance) {
+        calendarInstance.destroy();
+        calendarInstance = null;
+    }
+
     calendarInstance = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
-        initialDate: currentMonth,
+        initialDate: today,
         locale: 'zh-cn',
         firstDay: 1,
-        headerToolbar: { 
-            left: 'prev,next today', 
-            center: 'title', 
-            right: 'dayGridMonth,timeGridWeek,timeGridDay' 
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
         },
         events: [],
         eventDisplay: 'block',
         displayEventTime: false,
+        fixedWeekCount: false,
+        showNonCurrentDates: true,
         eventClick: function(info) {
             var p = info.event.extendedProps;
             alert('事项：' + p.title + '\n团队：' + p.teams + '\n责任人：' + p.assignee + '\n接收人：' + p.receiver + '\n周期：' + p.cycle);
         }
     });
-    
+
     calendarInstance.render();
-    console.log('日历初始化完成，当前月份:', currentMonth);
+    console.log('日历初始化完成，当前月份:', currentMonthStr);
+
+    // 立即更新日历事件
+    updateCalendar();
 }
 
 function updateCalendar() {
