@@ -67,6 +67,7 @@
                         <option value="AP">AP</option>
                         <option value="AR">AR</option>
                         <option value="GL">GL</option>
+                        <option value="OE">OE</option>
                         <option value="SCMC">SCMC</option>
                         <option value="Treasury">Treasury</option>
                     </select>
@@ -96,17 +97,17 @@
                     <div class="stat-number" id="quarterlyTasks">0</div>
                     <div class="stat-label">每季度任务</div>
                 </div>
-                <div class="stat-card yearly">
-                    <div class="stat-number" id="yearlyTasks">0</div>
-                    <div class="stat-label">每年任务</div>
+                <div class="stat-card biweekly">
+                    <div class="stat-number" id="biweeklyTasks">0</div>
+                    <div class="stat-label">每两周任务</div>
                 </div>
             </div>
 
             <!-- 图表区域 -->
             <div class="charts-container">
                 <div class="chart-box">
-                    <h3>各团队任务分布</h3>
-                    <canvas id="teamChart"></canvas>
+                    <h3>事项类型分布</h3>
+                    <canvas id="typeChart"></canvas>
                 </div>
                 <div class="chart-box">
                     <h3>任务周期分布</h3>
@@ -168,6 +169,7 @@
                     <span class="legend-item"><span class="dot ap"></span>AP</span>
                     <span class="legend-item"><span class="dot ar"></span>AR</span>
                     <span class="legend-item"><span class="dot gl"></span>GL</span>
+                    <span class="legend-item"><span class="dot oe"></span>OE</span>
                     <span class="legend-item"><span class="dot scmc"></span>SCMC</span>
                     <span class="legend-item"><span class="dot treasury"></span>Treasury</span>
                 </div>
@@ -183,33 +185,30 @@
                 <h2>数据源</h2>
             </div>
             
-            <!-- 跳转到飞书多维表格 -->
-            <div class="bitable-redirect-container">
-                <div class="bitable-redirect-card">
-                    <div class="redirect-icon">📊</div>
+            <div class="datasource-cards">
+                <!-- 飞书多维表格卡片 -->
+                <div class="datasource-card">
+                    <div class="datasource-card-icon">📊</div>
                     <h3>飞书多维表格</h3>
-                    <p>点击下方按钮直接跳转到飞书多维表格进行数据编辑</p>
-                    <button class="btn-bitable" onclick="openBitable()">
+                    <p>在飞书多维表格中编辑、管理所有任务数据</p>
+                    <button class="btn-datasource btn-bitable" onclick="openBitable()">
                         🚀 打开飞书多维表格
                     </button>
-                    <div class="redirect-info">
-                        <p><strong>提示：</strong>在飞书多维表格中可以：</p>
-                        <ul>
-                            <li>添加、编辑、删除任务记录</li>
-                            <li>管理团队成员</li>
-                            <li>设置任务周期和类型</li>
-                            <li>批量导入导出数据</li>
-                        </ul>
-                    </div>
                 </div>
                 
-                <!-- 刷新按钮 -->
-                <div class="refresh-container">
-                    <button class="btn-refresh" onclick="manualRefresh()" id="refreshBtn">
+                <!-- 刷新缓存卡片 -->
+                <div class="datasource-card">
+                    <div class="datasource-card-icon">🔄</div>
+                    <h3>刷新本地缓存</h3>
+                    <p>从服务器重新加载最新数据到本地缓存</p>
+                    <button class="btn-datasource btn-refresh" onclick="manualRefresh()">
                         🔄 刷新本地缓存数据
                     </button>
-                    <span class="refresh-hint">（此操作仅刷新本页显示的数据，不影响飞书多维表格）</span>
                 </div>
+            </div>
+            
+            <div class="datasource-hint">
+                <p>💡 <strong>提示：</strong>飞书多维表格是数据的真实来源，本地缓存仅用于加速页面显示。建议先在飞书多维表格中编辑数据，然后点击「刷新本地缓存」同步最新数据。</p>
             </div>
         </section>
     </div>

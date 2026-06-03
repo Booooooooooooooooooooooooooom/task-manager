@@ -8,8 +8,8 @@ const BITABLE_URL = 'https://bytedance.feishu.cn/base/BnZIbE8xiauxKYsjef5cOw70nF
 // ===== 全局数据 =====
 let allTasks = [];
 let filteredTasks = [];
-let teamChartInstance = null;
-let statusChartInstance = null;
+let typeChartInstance = null;
+let cycleChartInstance = null;
 let calendarInstance = null;
 let isLoading = false;
 
@@ -18,8 +18,8 @@ let currentPage = 1;
 let pageSize = 20; // 默认20条
 
 // ===== 常量定义 =====
-const TEAM_OPTIONS = ['AP', 'AR', 'GL', 'SCMC', 'Treasury'];
-const CYCLE_OPTIONS = ['每年', '每半年', '每季度', '每月', '每两周', '每周', '一次性'];
+const TEAM_OPTIONS = ['AP', 'AR', 'GL', 'OE', 'SCMC', 'Treasury'];
+const CYCLE_OPTIONS = ['每季度', '每月', '每两周', '每周'];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 // ===== localStorage 缓存配置 =====
@@ -470,38 +470,81 @@ function updateOverviewStats() {
     document.getElementById('totalTasks').textContent = filteredTasks.length;
     document.getElementById('monthlyTasks').textContent = filteredTasks.filter(function(t) { return t.cycle === '每月'; }).length;
     document.getElementById('quarterlyTasks').textContent = filteredTasks.filter(function(t) { return t.cycle === '每季度'; }).length;
-    document.getElementById('yearlyTasks').textContent = filteredTasks.filter(function(t) { return t.cycle === '每年'; }).length;
+    document.getElementById('biweeklyTasks').textContent = filteredTasks.filter(function(t) { return t.cycle === '每两周'; }).length;
 }
 
-function updateCharts(tasks) { updateTeamChart(tasks); updateCycleChart(tasks); }
+function updateCharts(tasks) { updateTypeChart(tasks); updateCycleChart(tasks); }
 
-function updateTeamChart(tasks) {
-    var ctx = document.getElementById('teamChart').getContext('2d');
-    var teamData = {};
+// 事项类型分布柱状图
+function updateTypeChart(tasks) {
+    var ctx = document.getElementById('typeChart').getContext('2d');
+    var typeData = {};
     tasks.forEach(function(t) { 
-        if (t.teams) {
-            t.teams.forEach(function(team) { 
-                teamData[team] = (teamData[team] || 0) + 1; 
-            }); 
+        if (t.type) {
+            typeData[t.type] = (typeData[t.type] || 0) + 1;
         }
     });
-    if (teamChartInstance) teamChartInstance.destroy();
-    teamChartInstance = new Chart(ctx, {
+    
+    var labels = Object.keys(typeData);
+    var values = Object.values(typeData);
+    var colors = ['#3182ce', '#38a169', '#dd6b20', '#805ad5', '#e53e3e', '#f6ad55', '#a0aec0', '#4fd1c5', '#fc8181', '#9f7aea'];
+    
+    if (typeChartInstance) typeChartInstance.destroy();
+    typeChartInstance = new Chart(ctx, {
         type: 'bar',
-        data: { labels: Object.keys(teamData), datasets: [{ label: '任务数量', data: Object.values(teamData), backgroundColor: ['#3182ce', '#38a169', '#dd6b20', '#805ad5', '#e53e3e'], borderRadius: 8 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        data: { 
+            labels: labels, 
+            datasets: [{ 
+                label: '任务数量', 
+                data: values, 
+                backgroundColor: colors.slice(0, labels.length),
+                borderRadius: 8 
+            }] 
+        },
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            plugins: { legend: { display: false } }, 
+            scales: { 
+                y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 0 } }
+            } 
+        }
     });
 }
 
+// 任务周期分布（仅显示有数据的周期）
 function updateCycleChart(tasks) {
     var ctx = document.getElementById('cycleChart').getContext('2d');
-    var cycleData = { '每年': 0, '每半年': 0, '每季度': 0, '每月': 0, '每两周': 0, '每周': 0, '一次性': 0 };
-    tasks.forEach(function(t) { if (cycleData[t.cycle] !== undefined) cycleData[t.cycle]++; });
-    if (statusChartInstance) statusChartInstance.destroy();
-    statusChartInstance = new Chart(ctx, {
+    var cycleData = {};
+    tasks.forEach(function(t) { 
+        if (t.cycle && CYCLE_OPTIONS.indexOf(t.cycle) >= 0) {
+            cycleData[t.cycle] = (cycleData[t.cycle] || 0) + 1;
+        }
+    });
+    
+    var labels = Object.keys(cycleData);
+    var values = Object.values(cycleData);
+    var colors = ['#3182ce', '#38a169', '#dd6b20', '#805ad5'];
+    
+    if (cycleChartInstance) cycleChartInstance.destroy();
+    cycleChartInstance = new Chart(ctx, {
         type: 'bar',
-        data: { labels: Object.keys(cycleData), datasets: [{ label: '任务数量', data: Object.values(cycleData), backgroundColor: ['#3182ce', '#38a169', '#dd6b20', '#805ad5', '#e53e3e', '#f6ad55', '#a0aec0'], borderRadius: 8 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        data: { 
+            labels: labels, 
+            datasets: [{ 
+                label: '任务数量', 
+                data: values, 
+                backgroundColor: colors.slice(0, labels.length),
+                borderRadius: 8 
+            }] 
+        },
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            plugins: { legend: { display: false } }, 
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } 
+        }
     });
 }
 
@@ -512,12 +555,13 @@ function initCalendar() {
     
     calendarEl.style.height = '650px';
     
-    var dates = allTasks.map(function(t) { return t.date; }).filter(function(d) { return d && d.length === 10; }).sort();
-    var initialDate = dates.length > 0 ? dates[0] : '2025-06-01';
+    // 默认展示本月
+    var today = new Date();
+    var currentMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-01';
     
     calendarInstance = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
-        initialDate: initialDate,
+        initialDate: currentMonth,
         locale: 'zh-cn',
         firstDay: 1,
         headerToolbar: { 
@@ -535,7 +579,7 @@ function initCalendar() {
     });
     
     calendarInstance.render();
-    console.log('日历初始化完成，初始日期:', initialDate);
+    console.log('日历初始化完成，当前月份:', currentMonth);
 }
 
 function updateCalendar() {
@@ -572,7 +616,7 @@ function updateCalendar() {
 }
 
 function getEventColorByTeam(teams) {
-    var colors = { 'AP': '#3182ce', 'AR': '#38a169', 'GL': '#dd6b20', 'SCMC': '#805ad5', 'Treasury': '#e53e3e' };
+    var colors = { 'AP': '#3182ce', 'AR': '#38a169', 'GL': '#dd6b20', 'OE': '#4fd1c5', 'SCMC': '#805ad5', 'Treasury': '#e53e3e' };
     return (teams && teams.length > 0) ? (colors[teams[0]] || '#3182ce') : '#3182ce';
 }
 
