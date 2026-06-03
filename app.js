@@ -2,16 +2,25 @@
 // 腾讯云 SCF 函数 URL
 const API_BASE_URL = 'https://1439227087-fulx05vji4.ap-chengdu.tencentscf.com';
 
+// ===== 飞书多维表格链接 =====
+const BITABLE_URL = 'https://bytedance.feishu.cn/base/BnZIbE8xiauxKYsjef5cOw70nFc?table=tblPwyRZonL7YmLs';
+
 // ===== 全局数据 =====
 let allTasks = [];
+let filteredTasks = [];
 let teamChartInstance = null;
 let statusChartInstance = null;
 let calendarInstance = null;
 let isLoading = false;
 
+// ===== 分页配置 =====
+let currentPage = 1;
+let pageSize = 20; // 默认20条
+
 // ===== 常量定义 =====
 const TEAM_OPTIONS = ['AP', 'AR', 'GL', 'SCMC', 'Treasury'];
 const CYCLE_OPTIONS = ['每年', '每半年', '每季度', '每月', '每两周', '每周', '一次性'];
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
@@ -63,7 +72,7 @@ async function loadFromServer() {
         const data = await response.json();
         
         if (data.code === 0 && Array.isArray(data.data)) {
-            allTasks = data.data.map(recordToTask);
+            allTasks = data.data.map(transformRecord);
             console.log('成功加载 ' + allTasks.length + ' 条记录');
             updateStatus('已加载 ' + allTasks.length + ' 条任务', 'success');
             updateAllViews();
@@ -76,6 +85,36 @@ async function loadFromServer() {
         console.error('加载失败:', error);
         throw error;
     }
+}
+
+// ===== 转换飞书记录为本任务对象 =====
+function transformRecord(record) {
+    const f = record.fields || {};
+    return {
+        id: record.record_id,
+        title: f['事项(月份+事项)'] || '',
+        teams: Array.isArray(f['团队']) ? f['团队'] : (f['团队'] ? [f['团队']] : []),
+        month: f['月份'] || '',
+        date: f['日期'] || '',
+        type: f['事项类型'] || '',
+        assignee: f['责任人'] || '',
+        receiver: f['接收人'] || '',
+        cycle: f['周期类型'] || ''
+    };
+}
+
+// ===== 转换任务对象为飞书记录格式 =====
+function taskToRecord(task) {
+    return {
+        fields: {
+            '事项(月份+事项)': task.title || '',
+            '团队': task.teams || [],
+            '事项类型': task.type || '',
+            '责任人 (人员 )': task.assignee || '',
+            '接收人 (人员 )': task.receiver || '',
+            '周期类型': task.cycle || ''
+        }
+    };
 }
 
 // ===== 静默刷新 =====
@@ -111,7 +150,7 @@ async function createTask(task) {
         });
         const data = await response.json();
         if (data.code === 0 && data.data) {
-            return recordToTask(data.data);
+            return transformRecord(data.data);
         }
         throw new Error(data.msg || '创建失败');
     } catch (error) {
@@ -157,49 +196,6 @@ async function deleteTaskFromServer(taskId) {
         showToast('删除失败: ' + error.message, 'error');
         return false;
     }
-}
-
-// ===== 飞书记录 转 本地任务 =====
-function recordToTask(record) {
-    var f = record.fields || {};
-    
-    // 处理团队字段 - 可能是数组或字符串
-    var teams = f['团队'];
-    if (typeof teams === 'string') {
-        teams = teams.split(/[,，]/).map(function(t) { return t.trim(); }).filter(function(t) { return t; });
-    } else if (Array.isArray(teams)) {
-        teams = teams;
-    } else {
-        teams = [];
-    }
-    
-    return {
-        id: record.record_id,
-        title: f['事项(月份+事项)'] || '',
-        teams: teams,
-        month: f['月份'] || '',
-        date: f['日期'] || '',
-        type: f['事项类型'] || '',
-        assignee: f['责任人'] || '',
-        receiver: f['接收人'] || '',
-        cycle: f['周期类型'] || ''
-    };
-}
-
-// ===== 本地任务 转 飞书记录 =====
-function taskToRecord(task) {
-    return {
-        fields: {
-            '事项(月份+事项)': task.title || '',
-            '团队': task.teams || [],
-            '月份': task.month || '',
-            '日期': task.date || '',
-            '事项类型': task.type || '',
-            '责任人': task.assignee || '',
-            '接收人': task.receiver || '',
-            '周期类型': task.cycle || ''
-        }
-    };
 }
 
 // ===== 日期格式转换 =====
@@ -287,20 +283,26 @@ function switchTab(tabName) {
 }
 
 // ===== 任务总览 =====
-function initOverview() { filterOverview(); }
+function initOverview() { 
+    currentPage = 1;
+    filterOverview(); 
+}
 function getSelectedTeam() { return document.getElementById('teamFilter').value; }
 
 function filterOverview() {
     var selectedTeam = getSelectedTeam();
     var startMonth = document.getElementById('overviewStartMonth').value;
     var endMonth = document.getElementById('overviewEndMonth').value;
-    var filtered = allTasks.slice();
-    if (selectedTeam) filtered = filtered.filter(function(t) { return t.teams && t.teams.indexOf(selectedTeam) >= 0; });
-    if (startMonth) filtered = filtered.filter(function(t) { return (t.month || '') >= startMonth; });
-    if (endMonth) filtered = filtered.filter(function(t) { return (t.month || '') <= endMonth; });
-    renderOverviewTaskList(filtered);
-    updateOverviewStats(filtered);
-    updateCharts(filtered);
+    
+    filteredTasks = allTasks.slice();
+    if (selectedTeam) filteredTasks = filteredTasks.filter(function(t) { return t.teams && t.teams.indexOf(selectedTeam) >= 0; });
+    if (startMonth) filteredTasks = filteredTasks.filter(function(t) { return (t.month || '') >= startMonth; });
+    if (endMonth) filteredTasks = filteredTasks.filter(function(t) { return (t.month || '') <= endMonth; });
+    
+    currentPage = 1; // 重置到第一页
+    renderOverviewTaskList();
+    updateOverviewStats();
+    updateCharts(filteredTasks);
 }
 
 function resetOverviewFilter() {
@@ -310,23 +312,91 @@ function resetOverviewFilter() {
     filterOverview();
 }
 
-function renderOverviewTaskList(tasks) {
-    var tbody = document.getElementById('overviewTaskList');
-    tbody.innerHTML = '';
-    tasks.forEach(function(task) {
-        var row = document.createElement('tr');
-        var teamsStr = (task.teams && task.teams.length > 0) ? task.teams.join(', ') : '';
-        row.innerHTML = '<td>' + (task.title || '') + '</td><td>' + teamsStr + '</td><td>' + (task.month || '') + '</td><td>' + (task.date || '') + '</td><td>' + (task.type || '') + '</td><td>' + (task.assignee || '') + '</td><td>' + (task.receiver || '') + '</td><td>' + (task.cycle || '') + '</td>';
-        tbody.appendChild(row);
-    });
-    document.getElementById('overviewCount').textContent = tasks.length;
+// ===== 分页相关函数 =====
+function changePageSize(newSize) {
+    pageSize = parseInt(newSize);
+    currentPage = 1;
+    renderOverviewTaskList();
+    updatePaginationControls();
 }
 
-function updateOverviewStats(tasks) {
-    document.getElementById('totalTasks').textContent = tasks.length;
-    document.getElementById('monthlyTasks').textContent = tasks.filter(function(t) { return t.cycle === '每月'; }).length;
-    document.getElementById('quarterlyTasks').textContent = tasks.filter(function(t) { return t.cycle === '每季度'; }).length;
-    document.getElementById('yearlyTasks').textContent = tasks.filter(function(t) { return t.cycle === '每年'; }).length;
+function goToPage(page) {
+    var totalPages = Math.ceil(filteredTasks.length / pageSize);
+    if (page < 1) page = 1;
+    if (page > totalPages) page = totalPages;
+    currentPage = page;
+    renderOverviewTaskList();
+    updatePaginationControls();
+}
+
+function updatePaginationControls() {
+    var totalPages = Math.ceil(filteredTasks.length / pageSize);
+    var startItem = (currentPage - 1) * pageSize + 1;
+    var endItem = Math.min(currentPage * pageSize, filteredTasks.length);
+    
+    document.getElementById('paginationInfo').textContent = 
+        '显示 ' + startItem + '-' + endItem + ' 条，共 ' + filteredTasks.length + ' 条';
+    
+    var prevBtn = document.getElementById('prevPageBtn');
+    var nextBtn = document.getElementById('nextPageBtn');
+    var firstBtn = document.getElementById('firstPageBtn');
+    var lastBtn = document.getElementById('lastPageBtn');
+    
+    if (prevBtn) prevBtn.disabled = currentPage <= 1;
+    if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+    if (firstBtn) firstBtn.disabled = currentPage <= 1;
+    if (lastBtn) lastBtn.disabled = currentPage >= totalPages;
+    
+    // 更新页码按钮
+    var pageNumbers = document.getElementById('pageNumbers');
+    if (pageNumbers) {
+        pageNumbers.innerHTML = '';
+        var maxButtons = 5;
+        var startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+        var endPage = Math.min(totalPages, startPage + maxButtons - 1);
+        startPage = Math.max(1, endPage - maxButtons + 1);
+        
+        for (var i = startPage; i <= endPage; i++) {
+            var btn = document.createElement('button');
+            btn.className = 'page-btn' + (i === currentPage ? ' active' : '');
+            btn.textContent = i;
+            btn.onclick = (function(p) { return function() { goToPage(p); }; })(i);
+            pageNumbers.appendChild(btn);
+        }
+    }
+}
+
+function renderOverviewTaskList() {
+    var tbody = document.getElementById('overviewTaskList');
+    tbody.innerHTML = '';
+    
+    var startIdx = (currentPage - 1) * pageSize;
+    var endIdx = Math.min(startIdx + pageSize, filteredTasks.length);
+    var pageTasks = filteredTasks.slice(startIdx, endIdx);
+    
+    pageTasks.forEach(function(task) {
+        var row = document.createElement('tr');
+        var teamsStr = (task.teams && task.teams.length > 0) ? task.teams.join(', ') : '';
+        row.innerHTML = '<td>' + escapeHtml(task.title || '') + '</td><td>' + escapeHtml(teamsStr) + '</td><td>' + escapeHtml(task.month || '') + '</td><td>' + escapeHtml(task.date || '') + '</td><td>' + escapeHtml(task.type || '') + '</td><td>' + escapeHtml(task.assignee || '') + '</td><td>' + escapeHtml(task.receiver || '') + '</td><td>' + escapeHtml(task.cycle || '') + '</td>';
+        tbody.appendChild(row);
+    });
+    
+    document.getElementById('overviewCount').textContent = filteredTasks.length;
+    updatePaginationControls();
+}
+
+// HTML 转义防止 XSS
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function updateOverviewStats() {
+    document.getElementById('totalTasks').textContent = filteredTasks.length;
+    document.getElementById('monthlyTasks').textContent = filteredTasks.filter(function(t) { return t.cycle === '每月'; }).length;
+    document.getElementById('quarterlyTasks').textContent = filteredTasks.filter(function(t) { return t.cycle === '每季度'; }).length;
+    document.getElementById('yearlyTasks').textContent = filteredTasks.filter(function(t) { return t.cycle === '每年'; }).length;
 }
 
 function updateCharts(tasks) { updateTeamChart(tasks); updateCycleChart(tasks); }
@@ -433,136 +503,13 @@ function getEventColorByTeam(teams) {
     return (teams && teams.length > 0) ? (colors[teams[0]] || '#3182ce') : '#3182ce';
 }
 
-// ===== 数据源 =====
-function renderBitable() {
-    var tbody = document.getElementById('bitableBody');
-    tbody.innerHTML = '';
-
-    allTasks.forEach(function(task, index) {
-        var row = document.createElement('tr');
-        row.dataset.id = task.id;
-        var teamsStr = (task.teams && task.teams.length > 0) ? task.teams.join(', ') : '';
-        row.innerHTML = '<td><span class="seq-number">' + (index + 1) + '</span></td><td><div class="cell" contenteditable="true" data-field="title" data-id="' + task.id + '">' + (task.title || '') + '</div></td><td><div class="cell-multi-select" data-field="teams" data-id="' + task.id + '">' + renderTeamMultiSelect(task.teams, task.id) + '</div></td><td><div class="cell month-display" data-field="month" data-id="' + task.id + '">' + (task.month || '') + '</div></td><td><div class="cell-select"><input type="date" data-field="date" data-id="' + task.id + '" value="' + (task.date || '') + '" onchange="onDateChange(this)" style="border:none;background:transparent;font-size:14px;padding:6px 0;width:100%;outline:none;"></div></td><td><div class="cell" contenteditable="true" data-field="type" data-id="' + task.id + '">' + (task.type || '') + '</div></td><td><div class="cell" contenteditable="true" data-field="assignee" data-id="' + task.id + '">' + (task.assignee || '') + '</div></td><td><div class="cell" contenteditable="true" data-field="receiver" data-id="' + task.id + '">' + (task.receiver || '') + '</div></td><td><div class="cell-select"><select data-field="cycle" data-id="' + task.id + '" onchange="onCellChange(this)">' + getOptionsHtml(CYCLE_OPTIONS, task.cycle) + '</select></div></td><td style="text-align:center"><button class="btn-delete" onclick="deleteTask(\'' + task.id + '\')" title="删除">🗑</button></td>';
-        tbody.appendChild(row);
-    });
-
-    tbody.querySelectorAll('.cell[contenteditable]').forEach(function(cell) {
-        cell.addEventListener('blur', function() { onCellChange(this); });
-    });
-    tbody.querySelectorAll('.team-checkbox').forEach(function(cb) {
-        cb.addEventListener('change', function() { onTeamMultiSelectChange(this); });
-    });
-
-    document.getElementById('datasourceCount').textContent = allTasks.length;
+// ===== 跳转到飞书多维表格 =====
+function openBitable() {
+    window.open(BITABLE_URL, '_blank');
 }
 
-function onDateChange(element) {
-    var id = element.dataset.id;
-    var dateValue = element.value;
-    var monthValue = getMonthFromDate(dateValue);
-    var task = allTasks.find(function(t) { return t.id === id; });
-    if (task) {
-        task.date = dateValue;
-        task.month = monthValue;
-        var monthCell = element.closest('tr').querySelector('.month-display');
-        if (monthCell) monthCell.textContent = monthValue;
-        updateAllViews();
-        updateTask(task);
-    }
-}
-
-function renderTeamMultiSelect(selectedTeams, taskId) {
-    var teams = selectedTeams || [];
-    var displayText = teams.length > 0 ? teams.join(', ') : '<span class="placeholder">选择团队</span>';
-    var html = '<div class="multi-select-dropdown" data-id="' + taskId + '"><div class="multi-select-display" onclick="toggleTeamDropdown(\'' + taskId + '\')">' + displayText + '</div><div class="multi-select-options" id="team-options-' + taskId + '">';
-    TEAM_OPTIONS.forEach(function(team) {
-        var isChecked = teams.indexOf(team) >= 0 ? ' checked' : '';
-        html += '<label class="multi-select-option"><input type="checkbox" class="team-checkbox" value="' + team + '" data-id="' + taskId + '"' + isChecked + '><span>' + team + '</span></label>';
-    });
-    html += '</div></div>';
-    return html;
-}
-
-function toggleTeamDropdown(taskId) {
-    var dropdown = document.getElementById('team-options-' + taskId);
-    document.querySelectorAll('.multi-select-options').forEach(function(d) {
-        if (d.id !== 'team-options-' + taskId) d.classList.remove('show');
-    });
-    dropdown.classList.toggle('show');
-}
-
-function onTeamMultiSelectChange(checkbox) {
-    var taskId = checkbox.dataset.id;
-    var task = allTasks.find(function(t) { return t.id === taskId; });
-    if (task) {
-        var checked = document.querySelectorAll('.team-checkbox[data-id="' + taskId + '"]:checked');
-        task.teams = Array.from(checked).map(function(cb) { return cb.value; });
-        var display = checkbox.closest('.multi-select-dropdown').querySelector('.multi-select-display');
-        display.innerHTML = task.teams.length > 0 ? task.teams.join(', ') : '<span class="placeholder">选择团队</span>';
-        updateAllViews();
-        updateTask(task);
-    }
-}
-
-function getOptionsHtml(options, selectedValue) {
-    var html = '<option value="">--</option>';
-    options.forEach(function(opt) {
-        html += '<option value="' + opt + '"' + (opt === selectedValue ? ' selected' : '') + '>' + opt + '</option>';
-    });
-    return html;
-}
-
-function onCellChange(element) {
-    var id = element.dataset.id;
-    var field = element.dataset.field;
-    var value = element.value || element.textContent.trim();
-    var task = allTasks.find(function(t) { return t.id === id; });
-    if (task) {
-        task[field] = value;
-        updateAllViews();
-        updateTask(task);
-    }
-}
-
-async function addNewRow() {
-    var newTask = { id: 'temp_' + Date.now(), title: '', month: '', date: '', type: '', assignee: '', receiver: '', cycle: '', teams: [] };
-    
-    var saved = await createTask(newTask);
-    if (saved) {
-        allTasks.push(saved);
-        renderBitable();
-        updateAllViews();
-        showToast('已添加到飞书', 'success');
-    } else {
-        allTasks.push(newTask);
-        renderBitable();
-        updateAllViews();
-        showToast('已添加（本地模式）', 'info');
-    }
-
-    setTimeout(function() {
-        var tbody = document.getElementById('bitableBody');
-        var lastRow = tbody.lastElementChild;
-        if (lastRow) {
-            lastRow.classList.add('row-new');
-            lastRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            var firstCell = lastRow.querySelector('.cell[contenteditable]');
-            if (firstCell) setTimeout(function() { firstCell.focus(); }, 100);
-        }
-    }, 100);
-}
-
-async function deleteTask(id) {
-    if (!confirm('确定要删除这条任务吗？')) return;
-    await deleteTaskFromServer(id);
-    allTasks = allTasks.filter(function(t) { return t.id !== id; });
-    renderBitable();
-    updateAllViews();
-    showToast('已删除', 'success');
-}
-
+// ===== 更新所有视图 =====
 function updateAllViews() {
     filterOverview();
     updateCalendar();
-    renderBitable();
 }

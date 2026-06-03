@@ -7,14 +7,13 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <!-- 飞书 SDK 已移除 - 使用公开 API -->
 </head>
 <body>
     <div class="container">
         <!-- 状态栏 -->
         <div class="status-bar">
             <div id="loginStatus" class="login-status">
-                <span>正在连接飞书...</span>
+                <span>正在连接服务器...</span>
             </div>
         </div>
 
@@ -117,7 +116,21 @@
 
             <!-- 任务列表 -->
             <div class="task-list-container">
-                <h3>任务明细</h3>
+                <div class="task-list-header">
+                    <h3>任务明细</h3>
+                    <!-- 分页控件 -->
+                    <div class="pagination-controls">
+                        <div class="page-size-selector">
+                            <label>每页显示：</label>
+                            <select id="pageSizeSelect" onchange="changePageSize(this.value)">
+                                <option value="10">10条</option>
+                                <option value="20" selected>20条</option>
+                                <option value="50">50条</option>
+                                <option value="100">100条</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
                 <table class="task-table">
                     <thead>
                         <tr>
@@ -135,6 +148,15 @@
                         <!-- 动态生成 -->
                     </tbody>
                 </table>
+                <!-- 分页导航 -->
+                <div class="pagination">
+                    <button id="firstPageBtn" class="page-btn" onclick="goToPage(1)">首页</button>
+                    <button id="prevPageBtn" class="page-btn" onclick="goToPage(currentPage - 1)">上一页</button>
+                    <div id="pageNumbers" class="page-numbers"></div>
+                    <button id="nextPageBtn" class="page-btn" onclick="goToPage(currentPage + 1)">下一页</button>
+                    <button id="lastPageBtn" class="page-btn" onclick="goToPage(Math.ceil(filteredTasks.length / pageSize))">末页</button>
+                    <span id="paginationInfo" class="pagination-info">显示 0-0 条，共 0 条</span>
+                </div>
             </div>
         </section>
 
@@ -159,34 +181,35 @@
         <section id="datasource" class="tab-content">
             <div class="section-header">
                 <h2>数据源</h2>
-                <div class="datasource-actions">
-                    <span class="task-count">共 <strong id="datasourceCount">0</strong> 条记录</span>
-                    <button class="btn-add-row" onclick="addNewRow()">+ 新增任务</button>
-                    <button class="btn-refresh" onclick="manualRefresh()" id="refreshBtn">🔄 刷新数据</button>
-                </div>
             </div>
-
-            <!-- 多维表格风格总表 -->
-            <div class="bitable-container">
-                <table class="bitable" id="bitable">
-                    <thead>
-                        <tr>
-                            <th class="col-seq">#</th>
-                            <th class="col-title">事项(月份+事项)</th>
-                            <th class="col-team">团队</th>
-                            <th class="col-month">月份</th>
-                            <th class="col-date">日期</th>
-                            <th class="col-type">事项类型</th>
-                            <th class="col-assignee">责任人</th>
-                            <th class="col-receiver">接收人</th>
-                            <th class="col-cycle">周期类型</th>
-                            <th class="col-action">操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="bitableBody">
-                        <!-- 动态生成 -->
-                    </tbody>
-                </table>
+            
+            <!-- 跳转到飞书多维表格 -->
+            <div class="bitable-redirect-container">
+                <div class="bitable-redirect-card">
+                    <div class="redirect-icon">📊</div>
+                    <h3>飞书多维表格</h3>
+                    <p>点击下方按钮直接跳转到飞书多维表格进行数据编辑</p>
+                    <button class="btn-bitable" onclick="openBitable()">
+                        🚀 打开飞书多维表格
+                    </button>
+                    <div class="redirect-info">
+                        <p><strong>提示：</strong>在飞书多维表格中可以：</p>
+                        <ul>
+                            <li>添加、编辑、删除任务记录</li>
+                            <li>管理团队成员</li>
+                            <li>设置任务周期和类型</li>
+                            <li>批量导入导出数据</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- 刷新按钮 -->
+                <div class="refresh-container">
+                    <button class="btn-refresh" onclick="manualRefresh()" id="refreshBtn">
+                        🔄 刷新本地缓存数据
+                    </button>
+                    <span class="refresh-hint">（此操作仅刷新本页显示的数据，不影响飞书多维表格）</span>
+                </div>
             </div>
         </section>
     </div>

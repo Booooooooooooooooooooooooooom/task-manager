@@ -688,6 +688,195 @@ body {
     font-size: 13px;
 }
 
+/* ===== 分页控件 ===== */
+.task-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.page-size-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.page-size-selector label {
+    font-size: 14px;
+    color: #64748b;
+}
+
+.page-size-selector select {
+    padding: 6px 12px;
+    border: 1px solid #cbd5e0;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+}
+
+.page-size-selector select:focus {
+    outline: none;
+    border-color: #3182ce;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+.pagination .page-btn {
+    padding: 8px 14px;
+    border: 1px solid #e2e8f0;
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+    min-width: 60px;
+}
+
+.pagination .page-btn:hover:not(:disabled) {
+    background: #3182ce;
+    color: white;
+    border-color: #3182ce;
+}
+
+.pagination .page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination .page-btn.active {
+    background: #3182ce;
+    color: white;
+    border-color: #3182ce;
+}
+
+.page-numbers {
+    display: flex;
+    gap: 4px;
+}
+
+.pagination-info {
+    margin-left: auto;
+    font-size: 13px;
+    color: #64748b;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-radius: 6px;
+}
+
+/* ===== 数据源跳转页面 ===== */
+.bitable-redirect-container {
+    padding: 20px 0;
+}
+
+.bitable-redirect-card {
+    background: linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%);
+    border: 2px dashed #cbd5e0;
+    border-radius: 16px;
+    padding: 50px 40px;
+    text-align: center;
+    max-width: 600px;
+    margin: 0 auto 30px;
+}
+
+.bitable-redirect-card .redirect-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+}
+
+.bitable-redirect-card h3 {
+    font-size: 28px;
+    color: #1a365d;
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.bitable-redirect-card p {
+    color: #64748b;
+    font-size: 15px;
+    margin-bottom: 25px;
+}
+
+.btn-bitable {
+    padding: 16px 40px;
+    background: linear-gradient(135deg, #3182ce 0%, #2c5282 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 6px 20px rgba(49, 130, 206, 0.4);
+}
+
+.btn-bitable:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(49, 130, 206, 0.5);
+}
+
+.redirect-info {
+    margin-top: 30px;
+    padding-top: 25px;
+    border-top: 1px solid #cbd5e0;
+    text-align: left;
+}
+
+.redirect-info p {
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.redirect-info ul {
+    list-style: none;
+    padding: 0;
+}
+
+.redirect-info li {
+    padding: 6px 0;
+    font-size: 14px;
+    color: #64748b;
+    padding-left: 20px;
+    position: relative;
+}
+
+.redirect-info li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: #38a169;
+    font-weight: bold;
+}
+
+.refresh-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    padding: 20px;
+    background: #fff7ed;
+    border-radius: 12px;
+    border: 1px solid #fed7aa;
+}
+
+.refresh-hint {
+    font-size: 13px;
+    color: #c05621;
+}
+
 /* ===== 响应式 ===== */
 @media (max-width: 1200px) {
     .stats-cards {
@@ -724,5 +913,30 @@ body {
 
     .bitable-container {
         overflow-x: scroll;
+    }
+    
+    .pagination {
+        justify-content: center;
+    }
+    
+    .pagination-info {
+        width: 100%;
+        text-align: center;
+        margin-left: 0;
+        margin-top: 10px;
+    }
+    
+    .task-list-header {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .bitable-redirect-card {
+        padding: 30px 20px;
+    }
+    
+    .refresh-container {
+        flex-direction: column;
+        text-align: center;
     }
 }
