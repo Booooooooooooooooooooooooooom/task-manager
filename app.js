@@ -1,6 +1,6 @@
 // ===== API 配置 =====
 // 腾讯云 SCF 函数 URL
-const API_BASE_URL = 'https://1439227087-fulx05vji4.ap-chengdu.tencentscf.com';
+const API_BASE_URL = 'https://1439227087-fyudtqk2vo.ap-chengdu.tencentscf.com';
 
 // ===== 飞书多维表格链接 =====
 const BITABLE_URL = 'https://bytedance.feishu.cn/base/BnZIbE8xiauxKYsjef5cOw70nFc?table=tblPwyRZonL7YmLs';
